@@ -1,10 +1,35 @@
 # ============================================================
-# Exam PDF Parser — CPU Dockerfile (Marker / Docling + Gemini)
-# For MinerU + GPU support use Dockerfile.gpu
+# Exam PDF Parser — Production Dockerfile
+# Multi-stage build for minimal image size
 # ============================================================
-FROM python:3.12-slim
 
-# System dependencies for PyMuPDF and document parsers
+# --- Stage 1: Builder ---
+FROM python:3.12-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libmupdf-dev \
+        libfreetype6-dev \
+        libharfbuzz-dev \
+        libopenjp2-7-dev \
+        libjpeg-dev \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+RUN pip install --no-cache-dir uv
+
+COPY pyproject.toml README.md ./
+RUN uv pip install --system --no-cache ".[web]"
+
+COPY src/ ./src/
+COPY main.py ./
+RUN uv pip install --system --no-cache -e .
+
+# --- Stage 2: Runtime ---
+FROM python:3.12-slim AS runtime
+
+# Runtime-only system libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libmupdf-dev \
         libfreetype6 \
@@ -12,32 +37,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libopenjp2-7 \
         libjpeg-turbo-progs \
         curl \
+        tini \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install uv for fast dependency installation
-RUN pip install --no-cache-dir uv
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy project definition first (layer cache)
-COPY pyproject.toml ./
-COPY README.md ./
-
-# Install base + web deps (no heavy doc parsers in CPU image by default)
-RUN uv pip install --system -e ".[web]"
-
-# Copy source
+# Copy application code
 COPY src/ ./src/
 COPY main.py ./
 
-# Non-root user for security
-RUN useradd -m -u 1001 appuser && chown -R appuser:appuser /app
+# Non-root user
+RUN useradd -m -u 1001 appuser \
+    && chown -R appuser:appuser /app \
+    && mkdir -p /tmp/exam-parser-uploads \
+    && chown appuser:appuser /tmp/exam-parser-uploads
+
 USER appuser
 
-# Temp directory for uploads (writable by appuser)
-RUN mkdir -p /tmp/exam-parser-uploads
+# Environment defaults (override at deploy time)
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UVICORN_HOST=0.0.0.0 \
+    UVICORN_PORT=8000 \
+    UVICORN_WORKERS=2
 
 EXPOSE 8000
 
-# Default: run with 2 workers (adjust for your CPU count)
-CMD ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Use tini for proper signal handling (PID 1 reaping)
+ENTRYPOINT ["tini", "--"]
+CMD ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--access-log"]

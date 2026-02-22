@@ -1,0 +1,33 @@
+# docker-compose.yml — Production deployment for Exam PDF Parser
+# Usage: docker compose up -d
+# Requires: .env file with GOOGLE_API_KEY (and optionally API_KEYS, CORS_ORIGINS)
+
+services:
+  api:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-2}
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      - API_KEYS=${API_KEYS:-}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+      - MAX_CONCURRENT_PARSES=${MAX_CONCURRENT_PARSES:-10}
+    volumes:
+      - upload-tmp:/tmp/exam-parser-uploads
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  upload-tmp:

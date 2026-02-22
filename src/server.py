@@ -21,12 +21,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .auth import require_api_key
 from .config import MODEL_CONFIG, get_settings
 from .parser import ExamParser
+from .rate_limit import check_rate_limit
 from .schema import ParsedExam, ParseResult
 from .validator import ValidationResult, validate_exam
 
@@ -292,7 +295,7 @@ async def health():
 
 
 @app.get("/api/models", response_model=ModelsResponse, tags=["meta"])
-async def list_models():
+async def list_models(_: str | None = Depends(require_api_key)):
     """List all available parser+LLM model combinations."""
     models = [
         ModelInfo(
@@ -312,6 +315,7 @@ async def parse_sync(
     file: UploadFile = File(..., description="PDF file to parse"),
     model: str = Form(default="mineru+gemini-3-pro-preview", description="Model string e.g. mineru+gemini-3-pro-preview"),
     instruction: str | None = Form(default=None, description="Optional custom instruction prompt"),
+    _rl: None = Depends(check_rate_limit),
 ):
     """
     Synchronous PDF parsing. Blocks until complete.
@@ -354,6 +358,7 @@ async def parse_async(
     file: UploadFile = File(..., description="PDF file to parse"),
     model: str = Form(default="mineru+gemini-3-pro-preview"),
     instruction: str | None = Form(default=None),
+    _rl: None = Depends(check_rate_limit),
 ):
     """
     Asynchronous PDF parsing. Returns a job_id immediately.
@@ -381,7 +386,7 @@ async def parse_async(
 
 
 @app.get("/api/jobs/{job_id}", response_model=JobStatusResponse, tags=["parse"])
-async def get_job(job_id: str):
+async def get_job(job_id: str, _: str | None = Depends(require_api_key)):
     """Check the status of an async parsing job."""
     record = _jobs.get(job_id)
     if record is None:
@@ -399,7 +404,7 @@ async def get_job(job_id: str):
 
 
 @app.post("/api/validate", response_model=ValidateResponse, tags=["validate"])
-async def validate(body: ValidateRequest):
+async def validate(body: ValidateRequest, _: str | None = Depends(require_api_key)):
     """
     Validate a ParsedExam JSON for structural completeness.
 
@@ -419,3 +424,12 @@ async def validate(body: ValidateRequest):
         total_warnings=validation.total_warnings,
         issues=[issue.model_dump() for issue in validation.issues],
     )
+
+
+# ---------------------------------------------------------------------------
+# Static files (dashboard) — mounted AFTER API routes so routes take priority
+# ---------------------------------------------------------------------------
+
+_static_dir = Path(__file__).parent / "static"
+if _static_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")

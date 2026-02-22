@@ -17,9 +17,26 @@ class Settings(BaseModel):
 
     GOOGLE_API_KEY: str | None = None
 
+    # Authentication — comma-separated list of valid API keys.
+    # Not set = auth disabled (development mode). 미설정 시 인증 비활성화.
+    API_KEYS: str | None = None
+
+    # Rate limiting — requests per minute per key/IP (default: 60)
+    # 분당 요청 제한 (키/IP별, 기본값: 60)
+    RATE_LIMIT_PER_MINUTE: int = 60
+
+    # Maximum simultaneous parse jobs (default: 10)
+    # 최대 동시 파싱 작업 수 (기본값: 10)
+    MAX_CONCURRENT_PARSES: int = 10
+
     def __init__(self, **kwargs):
         """Load settings from environment variables."""
-        defaults = {"GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY")}
+        defaults = {
+            "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY"),
+            "API_KEYS": os.getenv("API_KEYS") or None,
+            "RATE_LIMIT_PER_MINUTE": int(os.getenv("RATE_LIMIT_PER_MINUTE", "60")),
+            "MAX_CONCURRENT_PARSES": int(os.getenv("MAX_CONCURRENT_PARSES", "10")),
+        }
         defaults.update(kwargs)
         super().__init__(**defaults)
 

@@ -1,0 +1,1824 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>시험 PDF 파서 — Exam PDF Parser</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300&family=DM+Mono:wght@400;500&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── CSS Custom Properties ─────────────────────────────────────────── */
+    :root {
+      --slate-950: #0b0f1a;
+      --slate-900: #111827;
+      --slate-800: #1e2535;
+      --slate-700: #2d3748;
+      --slate-600: #4a5568;
+      --slate-400: #94a3b8;
+      --slate-300: #cbd5e1;
+      --slate-200: #e2e8f0;
+      --slate-100: #f1f5f9;
+      --slate-50:  #f8fafc;
+
+      --amber-500: #f59e0b;
+      --amber-400: #fbbf24;
+      --amber-300: #fcd34d;
+      --amber-100: #fef3c7;
+      --amber-50:  #fffbeb;
+
+      --green-500: #22c55e;
+      --green-100: #dcfce7;
+      --red-500:   #ef4444;
+      --red-100:   #fee2e2;
+      --blue-500:  #3b82f6;
+      --blue-100:  #dbeafe;
+      --orange-400: #fb923c;
+
+      --bg:        var(--slate-50);
+      --surface:   #ffffff;
+      --border:    var(--slate-200);
+      --text:      var(--slate-900);
+      --text-muted: var(--slate-600);
+      --text-faint: var(--slate-400);
+      --accent:    var(--amber-500);
+      --accent-light: var(--amber-100);
+
+      --radius-sm: 4px;
+      --radius:    8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+      --shadow:    0 4px 12px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.05);
+      --shadow-lg: 0 12px 32px rgba(0,0,0,.10), 0 4px 8px rgba(0,0,0,.06);
+
+      --font-sans: 'DM Sans', 'Noto Sans KR', system-ui, sans-serif;
+      --font-mono: 'DM Mono', 'Menlo', monospace;
+
+      --header-h: 64px;
+      --transition: 180ms cubic-bezier(.4,0,.2,1);
+    }
+
+    /* ─── Reset ──────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    button { font-family: inherit; cursor: pointer; border: none; }
+    input, select, textarea { font-family: inherit; }
+    a { color: inherit; text-decoration: none; }
+    ul, ol { list-style: none; }
+
+    /* ─── Header ─────────────────────────────────────────────────────────── */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: var(--header-h);
+      background: var(--slate-950);
+      border-bottom: 1px solid var(--slate-800);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+    }
+    .header-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .header-logo-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--amber-500);
+      border-radius: var(--radius-sm);
+      display: grid;
+      place-items: center;
+    }
+    .header-logo-icon svg { display: block; }
+    .header-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: -.01em;
+    }
+    .header-subtitle {
+      font-size: .7rem;
+      color: var(--slate-400);
+      font-weight: 400;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+    .header-divider {
+      width: 1px;
+      height: 28px;
+      background: var(--slate-800);
+    }
+    .header-api-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+    }
+    .header-api-label {
+      font-size: .75rem;
+      color: var(--slate-400);
+      white-space: nowrap;
+      font-family: var(--font-mono);
+    }
+    .header-api-input {
+      flex: 1;
+      min-width: 0;
+      max-width: 260px;
+      height: 32px;
+      background: var(--slate-800);
+      border: 1px solid var(--slate-700);
+      border-radius: var(--radius-sm);
+      color: var(--slate-300);
+      font-size: .8rem;
+      font-family: var(--font-mono);
+      padding: 0 10px;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+    .header-api-input:focus { border-color: var(--amber-500); }
+    .header-spacer { flex: 1; }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .75rem;
+      color: var(--slate-400);
+      font-family: var(--font-mono);
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--slate-600);
+      transition: background var(--transition);
+      flex-shrink: 0;
+    }
+    .status-dot.ok { background: var(--green-500); box-shadow: 0 0 6px var(--green-500); }
+    .status-dot.error { background: var(--red-500); }
+
+    /* ─── Main layout ────────────────────────────────────────────────────── */
+    .main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 32px 20px 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ─── Cards ──────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card-header-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+      display: grid;
+      place-items: center;
+      background: var(--amber-100);
+      color: var(--amber-500);
+      flex-shrink: 0;
+    }
+    .card-title {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .card-subtitle {
+      font-size: .75rem;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+    .card-body { padding: 20px; }
+
+    /* ─── Form elements ──────────────────────────────────────────────────── */
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field-label {
+      font-size: .78rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: .01em;
+    }
+    .field-label span { color: var(--text-faint); font-weight: 400; }
+    .input, .select {
+      height: 40px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      font-size: .875rem;
+      padding: 0 12px;
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition);
+      width: 100%;
+    }
+    .input:focus, .select:focus {
+      border-color: var(--amber-400);
+      box-shadow: 0 0 0 3px var(--amber-100);
+    }
+    .select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; cursor: pointer; }
+    .select option { font-family: var(--font-mono); }
+
+    /* model info tag below dropdown */
+    .model-meta {
+      font-size: .72rem;
+      color: var(--text-faint);
+      font-family: var(--font-mono);
+      min-height: 18px;
+    }
+    .model-meta strong { color: var(--amber-500); }
+
+    /* mode toggle */
+    .mode-toggle {
+      display: flex;
+      background: var(--slate-100);
+      border-radius: var(--radius);
+      padding: 3px;
+      gap: 3px;
+      width: fit-content;
+    }
+    .mode-btn {
+      padding: 6px 14px;
+      border-radius: calc(var(--radius) - 2px);
+      font-size: .78rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      background: transparent;
+      transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+    }
+    .mode-btn.active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ─── Drop zone ──────────────────────────────────────────────────────── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-lg);
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color var(--transition), background var(--transition);
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--amber-400);
+      background: var(--amber-50);
+    }
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .drop-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 12px;
+      color: var(--text-faint);
+    }
+    .drop-title {
+      font-size: .95rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .drop-hint {
+      font-size: .78rem;
+      color: var(--text-faint);
+    }
+    .file-selected {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      background: var(--amber-50);
+      border: 1px solid var(--amber-300);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      margin-top: 12px;
+    }
+    .file-selected.visible { display: flex; }
+    .file-icon { color: var(--amber-500); flex-shrink: 0; }
+    .file-name { font-size: .85rem; font-weight: 500; min-width: 0; word-break: break-all; }
+    .file-size { font-size: .75rem; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+    .file-clear {
+      margin-left: auto;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--amber-200);
+      color: var(--amber-700, #92400e);
+      display: grid;
+      place-items: center;
+      font-size: .7rem;
+      flex-shrink: 0;
+    }
+    .file-clear:hover { background: var(--amber-300); }
+
+    /* ─── Action row ─────────────────────────────────────────────────────── */
+    .action-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 40px;
+      padding: 0 18px;
+      border-radius: var(--radius);
+      font-size: .875rem;
+      font-weight: 600;
+      transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
+      white-space: nowrap;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary {
+      background: var(--amber-500);
+      color: #1a0e00;
+    }
+    .btn-primary:hover { background: var(--amber-400); box-shadow: 0 4px 12px rgba(245,158,11,.35); }
+    .btn-primary:disabled { background: var(--slate-300); color: var(--slate-500); cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-secondary {
+      background: var(--slate-100);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--slate-200); }
+    .btn-secondary:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--slate-100); color: var(--text); }
+    .btn-sm { height: 32px; padding: 0 12px; font-size: .8rem; }
+    .btn-danger { background: var(--red-100); color: var(--red-500); border: 1px solid #fca5a5; }
+    .btn-danger:hover { background: #fee2e2; }
+    .btn-success { background: var(--green-100); color: #15803d; border: 1px solid #86efac; }
+    .btn-success:hover { background: #bbf7d0; }
+
+    /* ─── Progress / Status ──────────────────────────────────────────────── */
+    .progress-card { display: none; }
+    .progress-card.visible { display: block; }
+
+    .spinner-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 4px 0;
+    }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--amber-500);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-text { font-size: .9rem; color: var(--text-muted); }
+    .spinner-text strong { color: var(--text); display: block; font-size: 1rem; margin-bottom: 2px; }
+
+    .progress-bar-wrap {
+      background: var(--slate-100);
+      border-radius: 99px;
+      height: 6px;
+      overflow: hidden;
+      margin-top: 16px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--amber-500), var(--amber-400));
+      transition: width .4s ease;
+      width: 0%;
+    }
+    .progress-bar-fill.indeterminate {
+      width: 40%;
+      animation: indeterminate 1.2s ease-in-out infinite;
+    }
+    @keyframes indeterminate {
+      0%   { transform: translateX(-200%); }
+      100% { transform: translateX(350%); }
+    }
+
+    .job-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+      font-size: .78rem;
+      color: var(--text-faint);
+      font-family: var(--font-mono);
+    }
+    .job-id-badge {
+      background: var(--slate-100);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 2px 8px;
+      font-size: .72rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+    .job-id-badge:hover { background: var(--slate-200); }
+
+    /* status pill */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+    }
+    .pill-pending  { background: var(--slate-100); color: var(--slate-600); }
+    .pill-running  { background: var(--amber-100); color: #92400e; }
+    .pill-done     { background: var(--green-100); color: #15803d; }
+    .pill-failed   { background: var(--red-100);   color: var(--red-500); }
+
+    /* ─── Error / Alert ──────────────────────────────────────────────────── */
+    .alert {
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-size: .85rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      line-height: 1.5;
+    }
+    .alert-icon { flex-shrink: 0; margin-top: 1px; }
+    .alert-error  { background: var(--red-100);   color: #991b1b; border: 1px solid #fca5a5; }
+    .alert-warn   { background: var(--amber-100); color: #92400e; border: 1px solid var(--amber-300); }
+    .alert-info   { background: var(--blue-100);  color: #1e40af; border: 1px solid #93c5fd; }
+    .alert-success { background: var(--green-100); color: #166534; border: 1px solid #86efac; }
+
+    /* ─── Results ────────────────────────────────────────────────────────── */
+    .results-section { display: none; }
+    .results-section.visible { display: flex; flex-direction: column; gap: 20px; }
+
+    .exam-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .meta-cell {
+      background: var(--slate-50);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+    }
+    .meta-cell-label {
+      font-size: .68rem;
+      color: var(--text-faint);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 4px;
+    }
+    .meta-cell-value {
+      font-size: .95rem;
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .stat-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 99px;
+      background: var(--slate-100);
+      border: 1px solid var(--border);
+      font-size: .75rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .stat-chip strong { color: var(--text); }
+
+    /* ─── Question List ──────────────────────────────────────────────────── */
+    .q-list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .q-list-title { font-size: .9rem; font-weight: 600; }
+    .q-controls { display: flex; align-items: center; gap: 8px; }
+
+    .q-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .q-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: box-shadow var(--transition);
+    }
+    .q-card:hover { box-shadow: var(--shadow-sm); }
+
+    /* type-based left border accent */
+    .q-card[data-type="듣기"]      { border-left: 3px solid #818cf8; }
+    .q-card[data-type="어휘"]      { border-left: 3px solid #34d399; }
+    .q-card[data-type="문법"]      { border-left: 3px solid #60a5fa; }
+    .q-card[data-type="주제/요지"] { border-left: 3px solid var(--amber-400); }
+    .q-card[data-type="빈칸"]      { border-left: 3px solid #f472b6; }
+    .q-card[data-type="장문"]      { border-left: 3px solid var(--orange-400); }
+    .q-card[data-type="서술형"]    { border-left: 3px solid #a78bfa; }
+    .q-card[data-type="기타"]      { border-left: 3px solid var(--slate-300); }
+
+    .q-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+      background: var(--surface);
+      transition: background var(--transition);
+    }
+    .q-header:hover { background: var(--slate-50); }
+    .q-num {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+      background: var(--slate-100);
+      color: var(--text-muted);
+      font-size: .8rem;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+    }
+    .q-type-badge {
+      font-size: .68rem;
+      padding: 2px 7px;
+      border-radius: 99px;
+      background: var(--slate-100);
+      color: var(--text-faint);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .q-preview {
+      flex: 1;
+      min-width: 0;
+      font-size: .82rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .q-pts {
+      font-size: .72rem;
+      color: var(--text-faint);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+    }
+    .q-chevron {
+      width: 16px;
+      height: 16px;
+      color: var(--text-faint);
+      flex-shrink: 0;
+      transition: transform var(--transition);
+    }
+    .q-card.open .q-chevron { transform: rotate(180deg); }
+    .q-card.open .q-num { background: var(--amber-100); color: var(--amber-500); }
+
+    .q-body {
+      display: none;
+      padding: 12px 14px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--slate-50);
+    }
+    .q-card.open .q-body { display: block; }
+
+    .q-section-label {
+      font-size: .68rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-faint);
+      margin-bottom: 6px;
+      margin-top: 12px;
+    }
+    .q-section-label:first-child { margin-top: 0; }
+
+    .q-text {
+      font-size: .875rem;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+    .q-passage {
+      font-size: .82rem;
+      line-height: 1.75;
+      color: var(--slate-700);
+      border-left: 3px solid var(--amber-300);
+      padding-left: 12px;
+      white-space: pre-wrap;
+    }
+    .q-choices { display: flex; flex-direction: column; gap: 5px; }
+    .q-choice {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: .84rem;
+      line-height: 1.5;
+    }
+    .q-choice-num {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border);
+      display: grid;
+      place-items: center;
+      font-size: .68rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+      margin-top: 1px;
+      color: var(--text-muted);
+    }
+    .q-vocab { display: flex; flex-wrap: wrap; gap: 6px; }
+    .q-vocab-item {
+      font-size: .75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 2px 8px;
+      font-family: var(--font-mono);
+    }
+    .q-vocab-item em { font-style: normal; color: var(--text-faint); }
+
+    .q-flag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: .72rem;
+      color: var(--blue-500);
+      background: var(--blue-100);
+      border-radius: 99px;
+      padding: 2px 8px;
+      margin-right: 4px;
+    }
+
+    /* ─── Validation Results ─────────────────────────────────────────────── */
+    .validation-section { display: none; }
+    .validation-section.visible { display: block; }
+
+    .v-summary {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .v-summary-box {
+      flex: 1;
+      min-width: 120px;
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      text-align: center;
+    }
+    .v-summary-box.valid   { background: var(--green-100); border: 1px solid #86efac; }
+    .v-summary-box.invalid { background: var(--red-100);   border: 1px solid #fca5a5; }
+    .v-summary-box.warn    { background: var(--amber-100); border: 1px solid var(--amber-300); }
+    .v-summary-count { font-size: 1.8rem; font-weight: 700; font-family: var(--font-mono); line-height: 1; }
+    .v-summary-label { font-size: .72rem; color: var(--text-muted); margin-top: 4px; }
+
+    .v-issue-list { display: flex; flex-direction: column; gap: 6px; }
+    .v-issue {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      font-size: .82rem;
+      line-height: 1.5;
+    }
+    .v-issue.error   { background: var(--red-100);   border: 1px solid #fca5a5; color: #991b1b; }
+    .v-issue.warning { background: var(--amber-100); border: 1px solid var(--amber-300); color: #92400e; }
+    .v-issue.info    { background: var(--blue-100);  border: 1px solid #93c5fd; color: #1e40af; }
+    .v-issue-icon { flex-shrink: 0; margin-top: 2px; }
+    .v-issue-body { flex: 1; min-width: 0; }
+    .v-issue-field { font-family: var(--font-mono); font-size: .75rem; opacity: .8; }
+
+    /* ─── Footer ─────────────────────────────────────────────────────────── */
+    .footer {
+      background: var(--slate-950);
+      border-top: 1px solid var(--slate-800);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .footer-left { display: flex; align-items: center; gap: 10px; }
+    .footer-title {
+      font-size: .8rem;
+      color: var(--slate-400);
+      font-family: var(--font-mono);
+    }
+    .footer-version {
+      font-size: .7rem;
+      color: var(--slate-600);
+      font-family: var(--font-mono);
+    }
+    .footer-right { font-size: .72rem; color: var(--slate-600); }
+
+    /* ─── Utility ─────────────────────────────────────────────────────────── */
+    .hidden { display: none !important; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    .text-mono { font-family: var(--font-mono); }
+    .mt-8  { margin-top: 8px; }
+    .mt-12 { margin-top: 12px; }
+    .mt-16 { margin-top: 16px; }
+    .flex { display: flex; }
+    .gap-8 { gap: 8px; }
+    .items-center { align-items: center; }
+    .flex-wrap { flex-wrap: wrap; }
+    .ml-auto { margin-left: auto; }
+
+    /* ─── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .header { padding: 0 14px; gap: 10px; }
+      .header-api-row { display: none; }
+      .main { padding: 20px 14px 60px; gap: 16px; }
+      .card-body { padding: 14px; }
+      .exam-meta-grid { grid-template-columns: repeat(2, 1fr); }
+      .v-summary { flex-direction: row; }
+    }
+
+    /* ─── Animations ─────────────────────────────────────────────────────── */
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .anim-in {
+      animation: fadeSlideUp .25s cubic-bezier(.4,0,.2,1) both;
+    }
+
+    /* stagger for question cards */
+    .q-card:nth-child(1)  { animation-delay: .02s; }
+    .q-card:nth-child(2)  { animation-delay: .04s; }
+    .q-card:nth-child(3)  { animation-delay: .06s; }
+    .q-card:nth-child(4)  { animation-delay: .08s; }
+    .q-card:nth-child(5)  { animation-delay: .10s; }
+    .q-card:nth-child(6)  { animation-delay: .12s; }
+    .q-card:nth-child(7)  { animation-delay: .14s; }
+    .q-card:nth-child(8)  { animation-delay: .16s; }
+    .q-card:nth-child(9)  { animation-delay: .18s; }
+    .q-card:nth-child(10) { animation-delay: .20s; }
+    .q-card { opacity: 0; animation: fadeSlideUp .22s cubic-bezier(.4,0,.2,1) both; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════ HEADER ═══ -->
+<header class="header" role="banner">
+  <div class="header-logo" aria-label="시험 PDF 파서">
+    <div class="header-logo-icon" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a0e00" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+        <polyline points="10 9 9 9 8 9"/>
+      </svg>
+    </div>
+    <div>
+      <div class="header-title">시험 PDF 파서</div>
+      <div class="header-subtitle">Exam PDF Parser</div>
+    </div>
+  </div>
+
+  <div class="header-divider" aria-hidden="true"></div>
+
+  <div class="header-api-row">
+    <label class="header-api-label" for="header-api-key">X-API-Key</label>
+    <input
+      id="header-api-key"
+      type="password"
+      class="header-api-input"
+      placeholder="선택사항 (optional)"
+      autocomplete="off"
+      spellcheck="false"
+    />
+  </div>
+
+  <div class="header-spacer" aria-hidden="true"></div>
+
+  <div class="status-badge" role="status" aria-live="polite" aria-label="API 상태">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">확인 중…</span>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════ MAIN ════ -->
+<main class="main" id="main">
+
+  <!-- ── Parse Configuration Card ────────────────────────────────────── -->
+  <section class="card anim-in" aria-label="파싱 설정">
+    <div class="card-header">
+      <div class="card-header-icon" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+        </svg>
+      </div>
+      <span class="card-title">파싱 설정 &nbsp;·&nbsp; <span style="font-weight:400;color:var(--text-muted)">Parse Configuration</span></span>
+    </div>
+    <div class="card-body" style="display:flex;flex-direction:column;gap:16px;">
+
+      <!-- Model selector -->
+      <div class="field">
+        <label class="field-label" for="model-select">모델 선택 <span>Model</span></label>
+        <select id="model-select" class="select" aria-describedby="model-meta">
+          <option value="">불러오는 중…</option>
+        </select>
+        <div class="model-meta" id="model-meta" aria-live="polite"></div>
+      </div>
+
+      <!-- Parse mode -->
+      <div class="field">
+        <div class="field-label">파싱 방식 <span>Mode</span></div>
+        <div class="mode-toggle" role="group" aria-label="파싱 방식 선택">
+          <button class="mode-btn active" data-mode="sync"  id="mode-sync"  aria-pressed="true">동기 Sync</button>
+          <button class="mode-btn"        data-mode="async" id="mode-async" aria-pressed="false">비동기 Async</button>
+        </div>
+        <div class="model-meta" id="mode-hint" style="margin-top:4px">소형 PDF (≤5페이지)에 권장. Recommended for small PDFs.</div>
+      </div>
+
+      <!-- Custom instruction -->
+      <div class="field">
+        <label class="field-label" for="instruction-input">커스텀 지시사항 <span>Custom instruction (optional)</span></label>
+        <input id="instruction-input" type="text" class="input" placeholder="예: 수학 시험, 객관식만 추출" />
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── Upload Card ──────────────────────────────────────────────────── -->
+  <section class="card anim-in" style="animation-delay:.06s" aria-label="PDF 업로드">
+    <div class="card-header">
+      <div class="card-header-icon" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="16 16 12 12 8 16"/>
+          <line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+        </svg>
+      </div>
+      <span class="card-title">PDF 업로드 &nbsp;·&nbsp; <span style="font-weight:400;color:var(--text-muted)">Upload</span></span>
+    </div>
+    <div class="card-body" style="display:flex;flex-direction:column;gap:14px;">
+
+      <div class="drop-zone" id="drop-zone" role="button" tabindex="0" aria-label="PDF 파일 업로드 영역. 클릭하거나 파일을 드래그하세요." aria-describedby="drop-hint-text">
+        <input type="file" id="file-input" accept=".pdf,application/pdf" aria-hidden="true" tabindex="-1" />
+        <div class="drop-icon" aria-hidden="true">
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="8" y="4" width="32" height="40" rx="3"/>
+            <path d="M30 4v10h10"/>
+            <line x1="16" y1="24" x2="32" y2="24"/>
+            <line x1="16" y1="30" x2="28" y2="30"/>
+            <line x1="16" y1="18" x2="24" y2="18"/>
+          </svg>
+        </div>
+        <div class="drop-title">PDF를 여기에 드래그하거나 클릭하여 선택</div>
+        <div class="drop-hint" id="drop-hint-text">최대 50 MB · PDF 파일만 지원</div>
+      </div>
+
+      <div class="file-selected" id="file-selected" role="status" aria-live="polite">
+        <div class="file-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div class="file-name" id="file-name-display"></div>
+          <div class="file-size" id="file-size-display"></div>
+        </div>
+        <button class="file-clear" id="file-clear-btn" aria-label="파일 제거" title="파일 제거">✕</button>
+      </div>
+
+      <div id="upload-error-slot"></div>
+
+      <div class="action-row">
+        <button class="btn btn-primary" id="parse-btn" disabled aria-label="파싱 시작">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          파싱 시작
+        </button>
+        <button class="btn btn-secondary" id="reset-btn">초기화</button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── Progress Card ────────────────────────────────────────────────── -->
+  <section class="card progress-card" id="progress-card" aria-label="파싱 진행 상태" aria-live="polite">
+    <div class="card-header">
+      <div class="card-header-icon" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </div>
+      <span class="card-title">진행 상태 &nbsp;·&nbsp; <span style="font-weight:400;color:var(--text-muted)">Progress</span></span>
+      <span class="status-pill pill-pending" id="job-status-pill" style="margin-left:auto"></span>
+    </div>
+    <div class="card-body">
+      <div class="spinner-row">
+        <div class="spinner" id="progress-spinner" aria-hidden="true"></div>
+        <div class="spinner-text">
+          <strong id="progress-title">파싱 중…</strong>
+          <span id="progress-subtitle">잠시 기다려 주세요.</span>
+        </div>
+      </div>
+      <div class="progress-bar-wrap" aria-hidden="true">
+        <div class="progress-bar-fill indeterminate" id="progress-bar"></div>
+      </div>
+      <div class="job-info" id="job-info" style="display:none">
+        <span>Job ID:</span>
+        <span class="job-id-badge" id="job-id-badge" title="클릭하여 복사" role="button" tabindex="0" aria-label="Job ID 복사"></span>
+        <span id="poll-counter" style="margin-left:auto"></span>
+      </div>
+      <div id="progress-error-slot" class="mt-12"></div>
+    </div>
+  </section>
+
+  <!-- ── Results ──────────────────────────────────────────────────────── -->
+  <div class="results-section" id="results-section">
+
+    <!-- Exam meta -->
+    <section class="card anim-in" aria-label="시험 정보">
+      <div class="card-header">
+        <div class="card-header-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+        </div>
+        <span class="card-title">시험 정보 &nbsp;·&nbsp; <span style="font-weight:400;color:var(--text-muted)">Exam Info</span></span>
+        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-ghost" id="download-btn" aria-label="JSON 다운로드">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            JSON 다운로드
+          </button>
+          <button class="btn btn-sm btn-secondary" id="validate-btn" aria-label="검증하기">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="9 11 12 14 22 4"/>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            검증하기
+          </button>
+        </div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:14px;">
+        <div class="exam-meta-grid" id="exam-meta-grid"></div>
+        <div class="stats-row" id="stats-row"></div>
+      </div>
+    </section>
+
+    <!-- Validation section -->
+    <section class="card validation-section" id="validation-section" aria-label="검증 결과" aria-live="polite">
+      <div class="card-header">
+        <div class="card-header-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <span class="card-title">검증 결과 &nbsp;·&nbsp; <span style="font-weight:400;color:var(--text-muted)">Validation</span></span>
+      </div>
+      <div class="card-body">
+        <div class="v-summary" id="v-summary"></div>
+        <div class="v-issue-list" id="v-issue-list"></div>
+      </div>
+    </section>
+
+    <!-- Questions -->
+    <section class="card" aria-label="문항 목록">
+      <div class="card-header">
+        <div class="card-header-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8" y1="6"  x2="21" y2="6"/>
+            <line x1="8" y1="12" x2="21" y2="12"/>
+            <line x1="8" y1="18" x2="21" y2="18"/>
+            <line x1="3" y1="6"  x2="3.01" y2="6"/>
+            <line x1="3" y1="12" x2="3.01" y2="12"/>
+            <line x1="3" y1="18" x2="3.01" y2="18"/>
+          </svg>
+        </div>
+        <span class="card-title">문항 목록 &nbsp;·&nbsp; <span style="font-weight:400;color:var(--text-muted)">Questions</span></span>
+      </div>
+      <div class="card-body">
+        <div class="q-list-header">
+          <div class="q-list-title"><span id="q-count-label">0</span>개 문항</div>
+          <div class="q-controls">
+            <button class="btn btn-sm btn-ghost" id="expand-all-btn">모두 펼치기</button>
+            <button class="btn btn-sm btn-ghost" id="collapse-all-btn">모두 접기</button>
+          </div>
+        </div>
+        <div class="q-list" id="q-list" role="list"></div>
+      </div>
+    </section>
+
+  </div><!-- /results-section -->
+
+</main><!-- /main -->
+
+<!-- ═══════════════════════════════════════════════════════════ FOOTER ══ -->
+<footer class="footer" role="contentinfo">
+  <div class="footer-left">
+    <span class="footer-title">시험 PDF 파서 / Exam PDF Parser</span>
+    <span class="footer-version">v1.0.0</span>
+  </div>
+  <div class="footer-right">API: <span id="footer-api-url" class="text-mono" style="color:var(--slate-400)"></span></div>
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════════ SCRIPT ══ -->
+<script>
+'use strict';
+
+/* ── Constants ─────────────────────────────────────────────────────────── */
+const BASE_URL = (() => {
+  const { protocol, hostname, port } = location;
+  return `${protocol}//${hostname}${port ? ':' + port : ''}`;
+})();
+
+const POLL_INTERVAL_MS = 3000;
+const LS_API_KEY = 'exam-parser-api-key';
+
+/* ── State ──────────────────────────────────────────────────────────────── */
+const state = {
+  file: null,
+  model: '',
+  mode: 'sync',       // 'sync' | 'async'
+  models: [],
+  jobId: null,
+  pollTimer: null,
+  pollCount: 0,
+  result: null,       // ParseResponse | JobStatusResponse.result
+  parsedExam: null,
+};
+
+/* ── DOM refs ───────────────────────────────────────────────────────────── */
+const $ = (sel, ctx = document) => ctx.querySelector(sel);
+const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
+
+const els = {
+  apiKey:           $('#header-api-key'),
+  modelSelect:      $('#model-select'),
+  modelMeta:        $('#model-meta'),
+  modeSync:         $('#mode-sync'),
+  modeAsync:        $('#mode-async'),
+  modeHint:         $('#mode-hint'),
+  instruction:      $('#instruction-input'),
+  dropZone:         $('#drop-zone'),
+  fileInput:        $('#file-input'),
+  fileSelected:     $('#file-selected'),
+  fileName:         $('#file-name-display'),
+  fileSize:         $('#file-size-display'),
+  fileClear:        $('#file-clear-btn'),
+  uploadErrorSlot:  $('#upload-error-slot'),
+  parseBtn:         $('#parse-btn'),
+  resetBtn:         $('#reset-btn'),
+  progressCard:     $('#progress-card'),
+  jobStatusPill:    $('#job-status-pill'),
+  progressSpinner:  $('#progress-spinner'),
+  progressTitle:    $('#progress-title'),
+  progressSubtitle: $('#progress-subtitle'),
+  progressBar:      $('#progress-bar'),
+  jobInfo:          $('#job-info'),
+  jobIdBadge:       $('#job-id-badge'),
+  pollCounter:      $('#poll-counter'),
+  progressErrSlot:  $('#progress-error-slot'),
+  resultsSection:   $('#results-section'),
+  examMetaGrid:     $('#exam-meta-grid'),
+  statsRow:         $('#stats-row'),
+  downloadBtn:      $('#download-btn'),
+  validateBtn:      $('#validate-btn'),
+  validationSection:$('#validation-section'),
+  vSummary:         $('#v-summary'),
+  vIssueList:       $('#v-issue-list'),
+  qList:            $('#q-list'),
+  qCountLabel:      $('#q-count-label'),
+  expandAll:        $('#expand-all-btn'),
+  collapseAll:      $('#collapse-all-btn'),
+  statusDot:        $('#status-dot'),
+  statusText:       $('#status-text'),
+  footerApiUrl:     $('#footer-api-url'),
+};
+
+/* ── Helpers ────────────────────────────────────────────────────────────── */
+function apiKey() {
+  return els.apiKey.value.trim();
+}
+
+function buildHeaders(extra = {}) {
+  const h = { ...extra };
+  const key = apiKey();
+  if (key) h['X-API-Key'] = key;
+  return h;
+}
+
+function fmtBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+function fmtCost(usd) {
+  if (usd === 0) return '$0.00';
+  if (usd < 0.001) return '<$0.001';
+  return '$' + usd.toFixed(4);
+}
+
+function fmtSec(s) {
+  if (s < 60) return s.toFixed(1) + 's';
+  const m = Math.floor(s / 60);
+  const rem = (s % 60).toFixed(0).padStart(2, '0');
+  return `${m}m ${rem}s`;
+}
+
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function makeAlert(type, message) {
+  const icons = {
+    error:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    warn:    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    info:    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+  };
+  const div = document.createElement('div');
+  div.className = `alert alert-${type}`;
+  div.innerHTML = `<span class="alert-icon" aria-hidden="true">${icons[type] || ''}</span><span>${escHtml(message)}</span>`;
+  return div;
+}
+
+function setSlot(slot, el) {
+  slot.innerHTML = '';
+  if (el) slot.appendChild(el);
+}
+
+/* ── API Key persistence ────────────────────────────────────────────────── */
+(function initApiKey() {
+  const saved = localStorage.getItem(LS_API_KEY) || '';
+  els.apiKey.value = saved;
+  els.apiKey.addEventListener('input', () => {
+    localStorage.setItem(LS_API_KEY, els.apiKey.value.trim());
+  });
+})();
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+els.footerApiUrl.textContent = BASE_URL;
+
+/* ── Health check ───────────────────────────────────────────────────────── */
+async function checkHealth() {
+  try {
+    const r = await fetch(`${BASE_URL}/health`, { headers: buildHeaders() });
+    if (r.ok) {
+      els.statusDot.className = 'status-dot ok';
+      els.statusText.textContent = 'API 연결됨';
+    } else {
+      throw new Error(r.status);
+    }
+  } catch {
+    els.statusDot.className = 'status-dot error';
+    els.statusText.textContent = 'API 오프라인';
+  }
+}
+checkHealth();
+setInterval(checkHealth, 30000);
+
+/* ── Load models ────────────────────────────────────────────────────────── */
+async function loadModels() {
+  try {
+    const r = await fetch(`${BASE_URL}/api/models`, { headers: buildHeaders() });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    state.models = data.models || [];
+    populateModelSelect();
+  } catch (err) {
+    els.modelSelect.innerHTML = '<option value="">모델 불러오기 실패 — 서버 확인 필요</option>';
+    els.modelMeta.innerHTML = `<span style="color:var(--red-500)">오류: ${escHtml(err.message)}</span>`;
+  }
+}
+
+function populateModelSelect() {
+  els.modelSelect.innerHTML = '';
+  if (state.models.length === 0) {
+    els.modelSelect.innerHTML = '<option value="">사용 가능한 모델 없음</option>';
+    return;
+  }
+  state.models.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.model_name;
+    opt.textContent = m.model_name;
+    els.modelSelect.appendChild(opt);
+  });
+  state.model = state.models[0].model_name;
+  updateModelMeta();
+}
+
+function updateModelMeta() {
+  const m = state.models.find(x => x.model_name === state.model);
+  if (!m) { els.modelMeta.textContent = ''; return; }
+  els.modelMeta.innerHTML =
+    `OCR: <strong>${escHtml(m.ocr_engine)}</strong> &nbsp;·&nbsp; ` +
+    `LLM: <strong>${escHtml(m.llm_model)}</strong> &nbsp;·&nbsp; ` +
+    `입력 <strong>$${m.input_price_per_1m}/1M</strong> · 출력 <strong>$${m.output_price_per_1m}/1M</strong>`;
+}
+
+els.modelSelect.addEventListener('change', () => {
+  state.model = els.modelSelect.value;
+  updateModelMeta();
+});
+
+loadModels();
+
+/* ── Mode toggle ────────────────────────────────────────────────────────── */
+[els.modeSync, els.modeAsync].forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.mode = btn.dataset.mode;
+    els.modeSync.classList.toggle('active', state.mode === 'sync');
+    els.modeAsync.classList.toggle('active', state.mode === 'async');
+    els.modeSync.setAttribute('aria-pressed', String(state.mode === 'sync'));
+    els.modeAsync.setAttribute('aria-pressed', String(state.mode === 'async'));
+    els.modeHint.textContent = state.mode === 'sync'
+      ? '소형 PDF (≤5페이지)에 권장. Recommended for small PDFs.'
+      : '비동기 모드: job_id를 받고 주기적으로 상태를 확인합니다.';
+  });
+});
+
+/* ── File input ─────────────────────────────────────────────────────────── */
+function setFile(file) {
+  if (!file) return;
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    setSlot(els.uploadErrorSlot, makeAlert('error', 'PDF 파일만 업로드할 수 있습니다.'));
+    return;
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    setSlot(els.uploadErrorSlot, makeAlert('error', '파일 크기가 50 MB를 초과합니다.'));
+    return;
+  }
+  setSlot(els.uploadErrorSlot, null);
+  state.file = file;
+  els.fileName.textContent = file.name;
+  els.fileSize.textContent = fmtBytes(file.size);
+  els.fileSelected.classList.add('visible');
+  els.parseBtn.disabled = false;
+}
+
+els.fileInput.addEventListener('change', e => {
+  setFile(e.target.files?.[0]);
+});
+
+els.fileClear.addEventListener('click', () => {
+  state.file = null;
+  els.fileInput.value = '';
+  els.fileSelected.classList.remove('visible');
+  els.parseBtn.disabled = true;
+  setSlot(els.uploadErrorSlot, null);
+});
+
+/* drag-and-drop */
+['dragenter', 'dragover'].forEach(ev => {
+  els.dropZone.addEventListener(ev, e => {
+    e.preventDefault();
+    els.dropZone.classList.add('drag-over');
+  });
+});
+['dragleave', 'drop'].forEach(ev => {
+  els.dropZone.addEventListener(ev, e => {
+    e.preventDefault();
+    els.dropZone.classList.remove('drag-over');
+    if (ev === 'drop') setFile(e.dataTransfer?.files?.[0]);
+  });
+});
+els.dropZone.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); els.fileInput.click(); }
+});
+
+/* ── Pill helper ────────────────────────────────────────────────────────── */
+const PILL_MAP = {
+  pending: ['pill-pending', '대기 중'],
+  running: ['pill-running', '실행 중'],
+  done:    ['pill-done',    '완료'],
+  failed:  ['pill-failed',  '실패'],
+};
+function setPill(status) {
+  els.jobStatusPill.className = 'status-pill ' + (PILL_MAP[status]?.[0] || 'pill-pending');
+  els.jobStatusPill.textContent = PILL_MAP[status]?.[1] || status;
+}
+
+/* ── Show / hide progress ───────────────────────────────────────────────── */
+function showProgress(options = {}) {
+  const { title = '파싱 중…', subtitle = '잠시 기다려 주세요.', status = 'running', showJobInfo = false, jobId = null } = options;
+  els.progressCard.classList.add('visible');
+  els.progressTitle.textContent = title;
+  els.progressSubtitle.textContent = subtitle;
+  setPill(status);
+  els.progressBar.classList.add('indeterminate');
+  els.progressBar.style.width = '';
+  els.progressSpinner.style.display = '';
+  setSlot(els.progressErrSlot, null);
+
+  if (showJobInfo && jobId) {
+    els.jobInfo.style.display = 'flex';
+    els.jobIdBadge.textContent = jobId;
+    els.pollCounter.textContent = '';
+  } else {
+    els.jobInfo.style.display = 'none';
+  }
+}
+
+function hideProgress() {
+  els.progressCard.classList.remove('visible');
+  stopPolling();
+}
+
+/* ── Parse — sync ───────────────────────────────────────────────────────── */
+async function parseSync() {
+  showProgress({ title: '파싱 중…', subtitle: '문서를 분석하고 있습니다. 잠시만 기다려 주세요.', status: 'running' });
+  els.parseBtn.disabled = true;
+
+  const fd = new FormData();
+  fd.append('file', state.file);
+  fd.append('model', state.model);
+  const instr = els.instruction.value.trim();
+  if (instr) fd.append('instruction', instr);
+
+  try {
+    const r = await fetch(`${BASE_URL}/api/parse`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: fd,
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      throw new Error(data.detail || `HTTP ${r.status}`);
+    }
+    hideProgress();
+    renderResults(data);
+  } catch (err) {
+    setPill('failed');
+    els.progressBar.classList.remove('indeterminate');
+    els.progressSpinner.style.display = 'none';
+    els.progressTitle.textContent = '파싱 실패';
+    els.progressSubtitle.textContent = '';
+    setSlot(els.progressErrSlot, makeAlert('error', `오류: ${err.message}`));
+    els.parseBtn.disabled = false;
+  }
+}
+
+/* ── Parse — async ──────────────────────────────────────────────────────── */
+async function parseAsync() {
+  showProgress({ title: '작업 제출 중…', subtitle: 'Job을 서버에 등록하고 있습니다.', status: 'pending' });
+  els.parseBtn.disabled = true;
+
+  const fd = new FormData();
+  fd.append('file', state.file);
+  fd.append('model', state.model);
+  const instr = els.instruction.value.trim();
+  if (instr) fd.append('instruction', instr);
+
+  try {
+    const r = await fetch(`${BASE_URL}/api/parse/async`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: fd,
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+
+    state.jobId = data.job_id;
+    state.pollCount = 0;
+    showProgress({
+      title: '비동기 파싱 중…',
+      subtitle: '서버에서 처리 중입니다. 자동으로 상태를 확인합니다.',
+      status: 'running',
+      showJobInfo: true,
+      jobId: data.job_id,
+    });
+    startPolling(data.job_id);
+  } catch (err) {
+    setPill('failed');
+    els.progressBar.classList.remove('indeterminate');
+    els.progressSpinner.style.display = 'none';
+    els.progressTitle.textContent = '제출 실패';
+    els.progressSubtitle.textContent = '';
+    setSlot(els.progressErrSlot, makeAlert('error', `오류: ${err.message}`));
+    els.parseBtn.disabled = false;
+  }
+}
+
+/* ── Polling ────────────────────────────────────────────────────────────── */
+function startPolling(jobId) {
+  stopPolling();
+  state.pollTimer = setInterval(() => pollJob(jobId), POLL_INTERVAL_MS);
+}
+
+function stopPolling() {
+  if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+}
+
+async function pollJob(jobId) {
+  state.pollCount++;
+  els.pollCounter.textContent = `폴링 ${state.pollCount}회`;
+
+  try {
+    const r = await fetch(`${BASE_URL}/api/jobs/${jobId}`, { headers: buildHeaders() });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+
+    setPill(data.status);
+
+    if (data.status === 'done') {
+      stopPolling();
+      els.progressBar.classList.remove('indeterminate');
+      els.progressBar.style.width = '100%';
+      els.progressSpinner.style.display = 'none';
+      els.progressTitle.textContent = '파싱 완료!';
+      els.progressSubtitle.textContent = '결과를 불러왔습니다.';
+      setTimeout(() => {
+        hideProgress();
+        if (data.result) renderResults(data.result, data);
+      }, 700);
+    } else if (data.status === 'failed') {
+      stopPolling();
+      els.progressBar.classList.remove('indeterminate');
+      els.progressSpinner.style.display = 'none';
+      els.progressTitle.textContent = '파싱 실패';
+      els.progressSubtitle.textContent = '';
+      setSlot(els.progressErrSlot, makeAlert('error', `서버 오류: ${data.error || '알 수 없는 오류'}`));
+      els.parseBtn.disabled = false;
+    }
+    // pending or running: keep polling
+  } catch (err) {
+    // Don't stop polling on network hiccup; show subtle warning
+    setSlot(els.progressErrSlot, makeAlert('warn', `상태 확인 실패 (재시도 중): ${err.message}`));
+  }
+}
+
+/* ── Copy job ID ────────────────────────────────────────────────────────── */
+els.jobIdBadge.addEventListener('click', () => {
+  if (!state.jobId) return;
+  navigator.clipboard.writeText(state.jobId).then(() => {
+    const orig = els.jobIdBadge.textContent;
+    els.jobIdBadge.textContent = '복사됨!';
+    setTimeout(() => { els.jobIdBadge.textContent = orig; }, 1500);
+  }).catch(() => {});
+});
+els.jobIdBadge.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') els.jobIdBadge.click();
+});
+
+/* ── Parse button ───────────────────────────────────────────────────────── */
+els.parseBtn.addEventListener('click', () => {
+  if (!state.file) return;
+  els.resultsSection.classList.remove('visible');
+  els.validationSection.classList.remove('visible');
+  state.parsedExam = null;
+  state.result = null;
+  if (state.mode === 'sync') parseSync();
+  else parseAsync();
+});
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+els.resetBtn.addEventListener('click', () => {
+  stopPolling();
+  state.file = null;
+  state.jobId = null;
+  state.parsedExam = null;
+  state.result = null;
+  els.fileInput.value = '';
+  els.fileSelected.classList.remove('visible');
+  els.parseBtn.disabled = true;
+  setSlot(els.uploadErrorSlot, null);
+  hideProgress();
+  els.resultsSection.classList.remove('visible');
+  els.validationSection.classList.remove('visible');
+  els.instruction.value = '';
+});
+
+/* ── Render results ─────────────────────────────────────────────────────── */
+function renderResults(data) {
+  // data can be a ParseResponse or ParseResult (from async job)
+  const exam = data.parsed_exam ?? data.parsedExam;
+  if (!exam) {
+    setSlot(els.uploadErrorSlot, makeAlert('error', '결과 데이터를 찾을 수 없습니다.'));
+    return;
+  }
+  state.parsedExam = exam;
+  state.result = data;
+
+  renderExamMeta(exam, data);
+  renderQuestions(exam.questions || []);
+  els.resultsSection.classList.add('visible');
+  els.validationSection.classList.remove('visible');
+
+  // Scroll to results
+  setTimeout(() => els.resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+}
+
+function renderExamMeta(exam, data) {
+  const info = exam.exam_info || {};
+  const cells = [
+    { label: '시험 제목', value: info.title || '—' },
+    { label: '연도',      value: info.year  || '—' },
+    { label: '월',        value: info.month ? info.month + '월' : '—' },
+    { label: '학년',      value: info.grade ? info.grade + '학년' : '—' },
+    { label: '과목',      value: info.subject || '—' },
+    { label: '총 문항',   value: info.total_questions != null ? info.total_questions + '문항' : '—' },
+  ];
+  els.examMetaGrid.innerHTML = cells.map(c =>
+    `<div class="meta-cell">
+       <div class="meta-cell-label">${escHtml(c.label)}</div>
+       <div class="meta-cell-value">${escHtml(String(c.value))}</div>
+     </div>`
+  ).join('');
+
+  // Stats chips
+  const chips = [];
+  if (data.model_name)            chips.push({ label: '모델',    val: data.model_name });
+  if (data.parsing_time_seconds)  chips.push({ label: '파싱시간', val: fmtSec(data.parsing_time_seconds) });
+  if (data.total_cost_usd != null) chips.push({ label: '비용',   val: fmtCost(data.total_cost_usd) });
+  if (data.pages_processed)       chips.push({ label: '페이지',  val: data.pages_processed + 'p' });
+  if (data.total_tokens_input)    chips.push({ label: '입력토큰', val: data.total_tokens_input.toLocaleString() });
+  if (data.total_tokens_output)   chips.push({ label: '출력토큰', val: data.total_tokens_output.toLocaleString() });
+
+  els.statsRow.innerHTML = chips.map(c =>
+    `<span class="stat-chip"><strong>${escHtml(String(c.val))}</strong>&nbsp;${escHtml(c.label)}</span>`
+  ).join('');
+}
+
+/* ── Questions ──────────────────────────────────────────────────────────── */
+function renderQuestions(questions) {
+  els.qCountLabel.textContent = questions.length;
+  els.qList.innerHTML = '';
+
+  questions.forEach((q, idx) => {
+    const card = buildQuestionCard(q, idx);
+    els.qList.appendChild(card);
+  });
+}
+
+const CHEVRON_SVG = `<svg class="q-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+function buildQuestionCard(q, idx) {
+  const card = document.createElement('div');
+  card.className = 'q-card';
+  card.setAttribute('role', 'listitem');
+  const qType = q.question_type || '기타';
+  card.dataset.type = qType;
+
+  const preview = q.question_text ? q.question_text.slice(0, 80) + (q.question_text.length > 80 ? '…' : '') : '';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'q-header';
+  header.setAttribute('role', 'button');
+  header.setAttribute('tabindex', '0');
+  header.setAttribute('aria-expanded', 'false');
+  header.setAttribute('aria-controls', `q-body-${idx}`);
+  header.innerHTML = `
+    <div class="q-num" aria-label="${q.number}번">${q.number}</div>
+    <span class="q-type-badge">${escHtml(qType)}</span>
+    <div class="q-preview">${escHtml(preview)}</div>
+    <span class="q-pts">${q.points ?? 2}점</span>
+    ${CHEVRON_SVG}
+  `;
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'q-body';
+  body.id = `q-body-${idx}`;
+  body.innerHTML = buildQuestionBody(q);
+
+  card.appendChild(header);
+  card.appendChild(body);
+
+  // Toggle
+  const toggle = () => {
+    const open = card.classList.toggle('open');
+    header.setAttribute('aria-expanded', String(open));
+  };
+  header.addEventListener('click', toggle);
+  header.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+  });
+
+  return card;
+}
+
+function buildQuestionBody(q) {
+  const parts = [];
+
+  // Flags
+  const flags = [];
+  if (q.has_image) flags.push('<span class="q-flag">🖼 이미지 포함</span>');
+  if (q.has_table) flags.push('<span class="q-flag">📋 표 포함</span>');
+  if (q.group_range) flags.push(`<span class="q-flag">그룹: ${escHtml(q.group_range)}</span>`);
+  if (flags.length) parts.push(`<div style="margin-bottom:8px">${flags.join('')}</div>`);
+
+  // Question text
+  if (q.question_text) {
+    parts.push(`<div class="q-section-label">문제</div><div class="q-text">${escHtml(q.question_text)}</div>`);
+  }
+
+  // Image description
+  if (q.image_description) {
+    parts.push(`<div class="q-section-label">이미지 설명</div><div class="q-text" style="font-style:italic;color:var(--text-muted)">${escHtml(q.image_description)}</div>`);
+  }
+
+  // Passage
+  if (q.passage) {
+    parts.push(`<div class="q-section-label">지문 Passage</div><div class="q-passage">${escHtml(q.passage)}</div>`);
+  }
+
+  // Vocab notes
+  if (q.vocabulary_notes?.length) {
+    const items = q.vocabulary_notes.map(v =>
+      `<span class="q-vocab-item">${escHtml(v.word)} <em>${escHtml(v.meaning)}</em></span>`
+    ).join('');
+    parts.push(`<div class="q-section-label">어휘</div><div class="q-vocab">${items}</div>`);
+  }
+
+  // Sub questions
+  if (q.sub_questions?.length) {
+    const subs = q.sub_questions.map((sq, i) =>
+      `<div class="q-text" style="margin-top:6px"><strong>(${i + 1})</strong> ${escHtml(sq)}</div>`
+    ).join('');
+    parts.push(`<div class="q-section-label">세부 문제</div>${subs}`);
+  }
+
+  // Choices
+  if (q.choices?.length) {
+    const choiceHtml = q.choices.map(c =>
+      `<div class="q-choice"><div class="q-choice-num">${c.number}</div><div>${escHtml(c.text)}</div></div>`
+    ).join('');
+    parts.push(`<div class="q-section-label">선택지</div><div class="q-choices">${choiceHtml}</div>`);
+  }
+
+  // Explanation
+  if (q.explanation) {
+    parts.push(`<div class="q-section-label" style="margin-top:12px">해설</div><div class="q-text" style="color:var(--text-muted)">${escHtml(q.explanation)}</div>`);
+  }
+
+  return parts.join('') || '<div class="q-text" style="color:var(--text-faint)">내용 없음</div>';
+}
+
+/* ── Expand / Collapse all ──────────────────────────────────────────────── */
+els.expandAll.addEventListener('click', () => {
+  $$('.q-card', els.qList).forEach(card => {
+    card.classList.add('open');
+    card.querySelector('.q-header')?.setAttribute('aria-expanded', 'true');
+  });
+});
+els.collapseAll.addEventListener('click', () => {
+  $$('.q-card', els.qList).forEach(card => {
+    card.classList.remove('open');
+    card.querySelector('.q-header')?.setAttribute('aria-expanded', 'false');
+  });
+});
+
+/* ── Download JSON ──────────────────────────────────────────────────────── */
+els.downloadBtn.addEventListener('click', () => {
+  if (!state.parsedExam) return;
+  const blob = new Blob([JSON.stringify(state.parsedExam, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const examTitle = state.parsedExam?.exam_info?.title || 'parsed-exam';
+  a.href = url;
+  a.download = `${examTitle.replace(/[^\w가-힣]/g, '_')}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+/* ── Validate ───────────────────────────────────────────────────────────── */
+els.validateBtn.addEventListener('click', async () => {
+  if (!state.parsedExam) return;
+  els.validateBtn.disabled = true;
+  els.validateBtn.textContent = '검증 중…';
+
+  try {
+    const r = await fetch(`${BASE_URL}/api/validate`, {
+      method: 'POST',
+      headers: buildHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ parsed_exam: state.parsedExam }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    renderValidation(data);
+    els.validationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) {
+    els.vSummary.innerHTML = '';
+    els.vIssueList.innerHTML = '';
+    els.vIssueList.appendChild(makeAlert('error', `검증 오류: ${err.message}`));
+    els.validationSection.classList.add('visible');
+  } finally {
+    els.validateBtn.disabled = false;
+    els.validateBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>검증하기`;
+  }
+});
+
+function renderValidation(data) {
+  // Summary boxes
+  const isValid = data.is_valid;
+  els.vSummary.innerHTML = `
+    <div class="v-summary-box ${isValid ? 'valid' : 'invalid'}" style="flex:2;min-width:200px">
+      <div class="v-summary-count" style="color:${isValid ? '#15803d' : 'var(--red-500)'}">
+        ${isValid ? '유효' : '오류 있음'}
+      </div>
+      <div class="v-summary-label">${isValid ? '스키마 검증 통과' : '스키마 검증 실패'}</div>
+    </div>
+    <div class="v-summary-box ${data.total_errors > 0 ? 'invalid' : 'valid'}">
+      <div class="v-summary-count" style="color:${data.total_errors > 0 ? 'var(--red-500)' : '#15803d'}">${data.total_errors}</div>
+      <div class="v-summary-label">오류 Errors</div>
+    </div>
+    <div class="v-summary-box ${data.total_warnings > 0 ? 'warn' : 'valid'}">
+      <div class="v-summary-count" style="color:${data.total_warnings > 0 ? '#92400e' : '#15803d'}">${data.total_warnings}</div>
+      <div class="v-summary-label">경고 Warnings</div>
+    </div>
+  `;
+
+  const ISSUE_ICONS = {
+    error:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    warning: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    info:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+  };
+
+  if (!data.issues?.length) {
+    els.vIssueList.innerHTML = '<div class="alert alert-success"><span class="alert-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span>문제 없음 — 모든 검증 통과</span></div>';
+  } else {
+    els.vIssueList.innerHTML = data.issues.map(issue => {
+      const sev = issue.severity || 'info';
+      const icon = ISSUE_ICONS[sev] || ISSUE_ICONS.info;
+      const field = issue.field ? `<div class="v-issue-field">${escHtml(issue.field)}</div>` : '';
+      return `<div class="v-issue ${sev}" role="listitem">
+        <span class="v-issue-icon" aria-hidden="true">${icon}</span>
+        <div class="v-issue-body">${escHtml(issue.message || '')}${field}</div>
+      </div>`;
+    }).join('');
+  }
+
+  els.validationSection.classList.add('visible');
+}
+</script>
+</body>
+</html>
