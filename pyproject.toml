@@ -12,46 +12,21 @@ keywords = ["pdf", "parser", "exam", "ocr", "llm", "korean", "english"]
 
 dependencies = [
     "google-genai>=1.0.0",
-    "openai>=1.0.0",
-    "anthropic>=0.40.0",
     "PyMuPDF>=1.24.0",
     "Pillow>=10.0.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
     "rich>=13.0.0",
-    "numpy>=1.24.0",
-    "tqdm>=4.60.0",
 ]
 
 [project.optional-dependencies]
-ocr = [
-    "pytesseract>=0.3.10",
-    "easyocr>=1.7.0",
-]
-ocr-heavy = [
-    "paddlepaddle>=2.5.0",
-    "paddleocr>=2.7.0",
-    "surya-ocr>=0.4.0",
-]
-ocr-transformer = [
-    "transformers>=4.30.0",
-    "torch>=2.0.0",
-]
-ocr-deepseek = [
-    "transformers>=4.30.0",
-    "torch>=2.0.0",
-    "einops>=0.7.0",
-    "addict>=2.4.0",
-    "easydict>=1.10",
-]
-doc-marker = [
-    "marker-pdf>=1.0.0",
-]
 doc-mineru = [
     "mineru>=1.0.0",
 ]
-doc-docling = [
-    "docling>=2.0.0",
+web = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "python-multipart>=0.0.9",
 ]
 dev = [
     "pytest>=7.0.0",
@@ -64,9 +39,8 @@ benchmark = [
     "tabulate>=0.9.0",
 ]
 all = [
-    "exam-pdf-parser[doc-docling]",
-    "exam-pdf-parser[ocr]",
-    "exam-pdf-parser[ocr-transformer]",
+    "exam-pdf-parser[doc-mineru]",
+    "exam-pdf-parser[web]",
     "exam-pdf-parser[dev]",
     "exam-pdf-parser[benchmark]",
 ]
@@ -101,16 +75,4 @@ dev-dependencies = [
     "pytest-cov>=4.0.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
-]
-
-# mineru requires Pillow>=11; marker-pdf, surya-ocr require Pillow<11
-conflicts = [
-    [
-        { extra = "doc-marker" },
-        { extra = "doc-mineru" },
-    ],
-    [
-        { extra = "ocr-heavy" },
-        { extra = "doc-mineru" },
-    ],
 ]
