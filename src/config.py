@@ -6,6 +6,7 @@ Configuration module for exam PDF parser.
 import logging
 import os
 from functools import lru_cache
+
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
@@ -29,6 +30,14 @@ class Settings(BaseModel):
     # 최대 동시 파싱 작업 수 (기본값: 10)
     MAX_CONCURRENT_PARSES: int = 10
 
+    # MinerU OCR configuration
+    # MinerU OCR 설정
+    MINERU_LANGUAGE: str = "korean"          # OCR language (korean, en, ch, japan, etc.)
+    MINERU_PARSE_METHOD: str = "auto"        # auto, ocr, txt
+    MINERU_FORMULA_ENABLE: bool = True       # Enable formula detection
+    MINERU_TABLE_ENABLE: bool = True         # Enable table detection
+    MINERU_MAKE_MODE: str = "mm_markdown"    # mm_markdown, nlp_markdown, content_list
+
     def __init__(self, **kwargs):
         """Load settings from environment variables."""
         defaults = {
@@ -36,6 +45,11 @@ class Settings(BaseModel):
             "API_KEYS": os.getenv("API_KEYS") or None,
             "RATE_LIMIT_PER_MINUTE": int(os.getenv("RATE_LIMIT_PER_MINUTE", "60")),
             "MAX_CONCURRENT_PARSES": int(os.getenv("MAX_CONCURRENT_PARSES", "10")),
+            "MINERU_LANGUAGE": os.getenv("MINERU_LANGUAGE", "korean"),
+            "MINERU_PARSE_METHOD": os.getenv("MINERU_PARSE_METHOD", "auto"),
+            "MINERU_FORMULA_ENABLE": os.getenv("MINERU_FORMULA_ENABLE", "true").lower() in ("true", "1", "yes"),
+            "MINERU_TABLE_ENABLE": os.getenv("MINERU_TABLE_ENABLE", "true").lower() in ("true", "1", "yes"),
+            "MINERU_MAKE_MODE": os.getenv("MINERU_MAKE_MODE", "mm_markdown"),
         }
         defaults.update(kwargs)
         super().__init__(**defaults)

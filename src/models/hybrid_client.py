@@ -31,6 +31,18 @@ class HybridOCRClient(ModelClient):
             raise ValueError("GOOGLE_API_KEY is not set. Required for Gemini LLM backend.")
 
         self.ocr_engine = get_ocr_engine(self.ocr_name)
+
+        # Pass MinerU configuration from settings
+        settings = get_settings()
+        if hasattr(self.ocr_engine, "configure"):
+            self.ocr_engine.configure(
+                language=settings.MINERU_LANGUAGE,
+                parse_method=settings.MINERU_PARSE_METHOD,
+                formula_enable=settings.MINERU_FORMULA_ENABLE,
+                table_enable=settings.MINERU_TABLE_ENABLE,
+                make_mode=settings.MINERU_MAKE_MODE,
+            )
+
         self.ocr_metrics = {}
         self._pdf_path = pdf_path
         self._client = None
