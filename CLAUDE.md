@@ -4,38 +4,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-General-purpose Korean/English exam PDF parser. 3-layer pipeline: Document Parsers → LLM Structuring → Validation. Extracts questions from any exam type into structured JSON with auto-detection of language and subject.
+Korean/English exam PDF parser focused on MinerU + Gemini 3 Pro pipeline. 3-layer architecture: MinerU (Document Parser) → Gemini Pro (LLM Structuring) → Validation. Extracts questions from Korean CSAT/mock exams into structured JSON. Also serves as a FastAPI web service.
 
 ## Commands
 
 ```bash
 # Install (UV recommended)
-uv pip install -e ".[all]"          # everything (including doc parsers)
-uv pip install -e ".[doc-parsers]"  # marker, mineru, docling
-uv pip install -e ".[dev]"          # + pytest, black, ruff
+uv pip install -e ".[doc-mineru]"    # MinerU document parser
+uv pip install "mineru[core]"        # MinerU full dependencies (torch, doclayout-yolo, etc.)
+uv pip install -e ".[web]"           # FastAPI web server
+uv pip install -e ".[dev]"           # + pytest, black, ruff
 
-# Parse single PDF
-python main.py test/2025년-9월-고3-모의고사-영어-문제.pdf -m marker+gemini-3-flash-preview -o output/result.json
-
-# Parse with all models (comparison)
-python main.py test/2025년-9월-고3-모의고사-영어-문제.pdf
+# Parse single PDF (use .venv python)
+.venv/bin/python main.py test/2025년-9월-고3-모의고사-영어-문제.pdf -m mineru+gemini-3-pro-preview -o output/result.json
 
 # Parse with validation
-python main.py test/2025년-9월-고3-모의고사-영어-문제.pdf -m marker+gemini-3-flash-preview --validate --answer-key test/answer.md
-
-# Model comparison with accuracy evaluation
-python scripts/run_comparison.py test/2025년-9월-고3-모의고사-영어-문제.pdf \
-  --answer test/answer.md \
-  --models marker+gemini-3-flash-preview,docling+gpt-5.1 \
-  --output output/comparison/ \
-  --report output/report.md
+.venv/bin/python main.py test/2025년-9월-고3-모의고사-영어-문제.pdf -m mineru+gemini-3-pro-preview --validate --answer-key test/answer.md
 
 # List models/parsers
-python main.py --list-models
-python main.py --list-ocr
+.venv/bin/python main.py --list-models
+.venv/bin/python main.py --list-ocr
 
-# Batch processing (500+ PDFs)
-python scripts/batch_parser.py ./exams/ -m marker+gemini-3-flash-preview -w 8 -o results/
+# Run web server
+uvicorn src.server:app --host 0.0.0.0 --port 8000
+
+# Docker (CPU)
+docker build -t exam-parser .
+docker run -p 8000:8000 -e GOOGLE_API_KEY=... exam-parser
 
 # Dev tools
 black src/ scripts/ --line-length 120
@@ -45,7 +40,7 @@ pytest tests/
 
 ## Architecture
 
-3-layer pipeline producing `ParsedExam` (Pydantic). All models use hybrid format `{parser}+{llm}` (e.g., `marker+gemini-3-flash-preview`): Layer 1 parser extracts text/markdown, Layer 2 LLM structures it into JSON, Layer 3 validates.
+3-layer pipeline producing `ParsedExam` (Pydantic). Primary model: `mineru+gemini-3-pro-preview`. Layer 1 MinerU extracts text/markdown, Layer 2 Gemini Pro structures it into JSON, Layer 3 validates.
 
 **Key abstractions:**
 - `ModelClient` (ABC, `src/models/base.py`) — LLM clients. `parse_exam(images) → ParsedExam`
@@ -54,30 +49,53 @@ pytest tests/
 - `ExamParser` (`src/parser.py`) — main orchestrator
 - `PDFParser` (`src/pdf_parser.py`) — PDF→PNG via PyMuPDF. `get_page_images_as_bytes() → List[Tuple[bytes, mime]]`
 
-**Supported parsers (Layer 1):** marker, mineru, docling (deep learning, recommended); pymupdf-text, tesseract, easyocr, paddleocr, surya, trocr, deepseek-ocr (traditional)
+**Document Parser (Layer 1):** MinerU v2.x (`src/ocr/mineru_ocr.py`) — GPU recommended (CUDA 11.8+, 4GB+ VRAM), CPU fallback supported
 
-**LLM backends (Layer 2):** gemini-3-flash-preview (cheapest, recommended), gpt-5.1
+**LLM Backend (Layer 2):** gemini-3-pro-preview via google-genai SDK
 
 **Adding new parser:** subclass `OCREngine`, implement `set_pdf_path()` + `extract_from_pdf()`, register in `OCR_ENGINES` in `src/ocr/__init__.py`
 
 **Adding new LLM:** add pricing to `_LLM_PRICING` in `src/config.py`, add to `_LLM_BACKENDS`, implement `_call_*` in `src/models/hybrid_client.py`
 
+## Web Server (`src/server.py`)
+
+FastAPI web service for PDF parsing. See `DESIGN.md` for full architecture.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/parse` | Sync PDF parsing |
+| POST | `/api/parse/async` | Async parsing → job_id |
+| GET | `/api/jobs/{job_id}` | Poll job status |
+| GET | `/api/models` | List available models |
+| POST | `/api/validate` | Validate ParsedExam JSON |
+| GET | `/health` | Health check |
+
+**Auth:** `src/auth.py` — API key via `X-API-Key` header or `api_key` query param. Set `API_KEYS` env var (comma-separated). Disabled when unset (dev mode).
+
 ## Data Models (`src/schema.py`)
 
-`ParsedExam` → `ExamInfo` + `list[Question]`. `Question` fields: number, question_text, question_type (19 enum types), passage, choices, points, vocabulary_notes, image/table flags, sub_questions, group_range. `ExamInfo` fields: title, year, month, grade, subject (auto-detected), total_questions (dynamic).
+`ParsedExam` → `ExamInfo` + `list[Question]`. `Question` fields: number, question_text, question_type (22 enum types including 듣기/서술형/오류수정/배열/문장전환), passage, choices, points, vocabulary_notes, image/table flags, sub_questions, group_range. `ExamInfo` fields: title, year, month, grade, subject (auto-detected), total_questions (dynamic).
 
 ## Evaluation and Validation
 
 `src/evaluator.py`: `parse_answer_md(filepath) → AnswerKey`; `evaluate(parsed_exam, answer_key) → EvalResult`. Weighted scoring: coverage 30%, passage similarity 30%, choice accuracy 25%, question text similarity 15%.
 
-`src/validator.py`: `validate_exam(parsed_exam, answer_key?) → ValidationResult`. Checks: schema completeness, numbering continuity, choice count (5 per MCQ), passage presence, answer key cross-reference.
+`src/validator.py`: `validate_exam(parsed_exam, answer_key?) → ValidationResult`. Checks:
+- Schema completeness (required fields, point values 1-5, question_type set)
+- Numbering continuity (gaps, duplicates, count mismatch)
+- Choice count (5 per MCQ), choice numbering, empty text, duplicate choices
+- Passage presence for passage-required types, short passage warning (<20 chars)
+- **Listening questions** (1-17): type=LISTENING enforcement, no passage, choices required
+- **Group questions**: group_range "N~M" format, member completeness, first question passage
+- **Content quality**: duplicate question_text, duplicate choices, image/table description consistency
+- Answer key cross-reference (if provided)
 
 ## Configuration
 
-- API keys in `.env`: `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
-- Model pricing auto-generated from `_LLM_PRICING` x `_DOCUMENT_PARSERS` in `src/config.py`
+- API keys in `.env`: `GOOGLE_API_KEY` (required)
+- Pipeline: MinerU + Gemini 3 Pro (`mineru+gemini-3-pro-preview`)
 - Settings singleton via `get_settings()` with `@lru_cache()`
-- LLM prompt in `src/prompt.py` — temperature 0.1, Korean-primary, auto-detects exam type
+- LLM prompt in `src/prompt.py` — temperature 0.1, Korean-primary, dedicated listening question section, auto-detects exam type
 
 ## Code style
 
