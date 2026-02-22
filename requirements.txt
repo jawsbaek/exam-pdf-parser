@@ -1,0 +1,21 @@
+google-genai>=1.0.0
+openai>=1.0.0
+anthropic>=0.40.0
+PyMuPDF>=1.24.0
+Pillow>=10.0.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+rich>=13.0.0
+numpy>=1.24.0
+
+# Batch processing
+tqdm>=4.60.0
+
+# OCR engines (install as needed)
+# pip install pytesseract  # + Tesseract binary: brew install tesseract tesseract-lang
+# pip install easyocr
+# pip install paddlepaddle paddleocr
+# pip install surya-ocr
+# pip install transformers torch  # TrOCR (microsoft/trocr-base-printed)
+# pip install transformers torch einops addict easydict  # DeepSeek-OCR (deepseek-ai/DeepSeek-OCR-2)
+# pip install flash-attn --no-build-isolation  # Optional: faster inference on CUDA GPUs
