@@ -37,8 +37,27 @@ def get_parsing_prompt() -> str:
 - group_range: 지문 공유 문제군 범위 (예: "41~42", "43~45")
 - sub_questions: 묶음 문제의 세부 문항 목록
 
+## 듣기 문제 (Listening Questions)
+한국 수능/모의고사 영어 시험에서 문제 1~17번은 듣기 문제입니다.
+In Korean CSAT/mock English exams, questions 1–17 are listening comprehension.
+
+- question_type: 반드시 "듣기" (MUST be "듣기" for all listening questions)
+- passage: 반드시 null (오디오 기반; 시험지에 지문 없음 / audio-based, no printed passage)
+- choices: 반드시 추출 (5개 선택지 ①②③④⑤ / MUST extract 5 choices)
+- question_text: 인쇄된 지시문 그대로 추출 (e.g. "다음을 듣고, 남자의 마지막 말에 대한 여자의 응답으로 가장 적절한 것을 고르시오.")
+- has_image: 그림/상황 도표가 인쇄된 경우 true (set true if a printed picture or situation diagram appears)
+- 선택지가 한글 문장인 경우에도 모두 추출할 것 (extract choices even when they are full Korean sentences)
+
+듣기 문제 세부 유형 (모두 question_type="듣기" 사용):
+- 목적 파악 / 의견·주장 / 관계 파악 / 그림 상황
+- 할 일·부탁 / 이유 / 숫자·수치 / 언급 유무
+- 내용 일치 / 대화 응답 / 상황 설명
+
+**중요:** 듣기 문제는 인쇄 내용이 지시문과 선택지뿐이더라도 반드시 추출해야 합니다.
+(Even if a listening question has only a question text and choices printed, it MUST be extracted.)
+
 ## 특수 케이스
-1. 듣기 문제: 지시문과 선택지 추출; passage=null
+1. 듣기 문제: 위 듣기 섹션 참조 (passage=null, question_type="듣기", choices 필수)
 2. 묶음 문제 [41~42] 등: 첫 번째 문제에 공유 지문; 모든 문제에 동일 group_range
 3. 빈칸: ________ 로 표시
 4. 순서 배열: (A),(B),(C) 문단 모두 passage에 포함
