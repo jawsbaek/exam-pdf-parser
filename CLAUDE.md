@@ -97,6 +97,18 @@ FastAPI web service for PDF parsing. See `DESIGN.md` for full architecture.
 - Settings singleton via `get_settings()` with `@lru_cache()`
 - LLM prompt in `src/prompt.py` — temperature 0.1, Korean-primary, dedicated listening question section, auto-detects exam type
 
+### MinerU OCR Settings (env vars in `.env`)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MINERU_LANGUAGE` | `korean` | OCR language (`korean`, `en`, `ch`, `japan`) |
+| `MINERU_PARSE_METHOD` | `auto` | `auto` (detect text/scan), `ocr` (force OCR), `txt` (text-only) |
+| `MINERU_FORMULA_ENABLE` | `true` | Formula detection — disable for non-math exams to speed up |
+| `MINERU_TABLE_ENABLE` | `true` | Table detection — keep enabled for vocabulary/grammar tables |
+| `MINERU_MAKE_MODE` | `mm_markdown` | `mm_markdown` (full: tables + images), `nlp_markdown` (text only) |
+
+`MinerUOCREngine` (`src/ocr/mineru_ocr.py`) accepts these via constructor or `configure()` method. `HybridOCRClient` auto-applies settings from `get_settings()` at init.
+
 ## Code style
 
 - Line length: 120 (both black and ruff)
