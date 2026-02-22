@@ -4,7 +4,15 @@ Pydantic models for structured output.
 """
 
 from enum import Enum
-from typing import TypedDict
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import TypedDict
+else:
+    try:
+        from typing_extensions import TypedDict  # pydantic requires this on Python < 3.12
+    except ImportError:
+        from typing import TypedDict
 
 from pydantic import BaseModel, Field, model_validator
 

@@ -109,7 +109,7 @@ def main():
         "-m", "--model",
         type=str,
         default=None,
-        help="Model to use, e.g. 'marker+gemini-3-flash-preview' (default: all models)"
+        help="Model to use (default: mineru+gemini-3-pro-preview)"
     )
 
     parser.add_argument(
@@ -164,31 +164,17 @@ def main():
     if args.list_ocr:
         from .ocr import list_available_engines
 
-        table = Table(title="Document Parsers & OCR Engines")
+        table = Table(title="Document Parsers")
         table.add_column("Engine", style="cyan")
         table.add_column("Available", style="green")
-        table.add_column("Class", style="blue")
-        table.add_column("Type", style="yellow")
 
         for name, info in list_available_engines().items():
             avail = "[green]Yes[/green]" if info["available"] else "[red]No[/red]"
-            engine_type = "Document Parser" if name in ("marker", "mineru", "docling") else (
-                "Text Extractor" if name == "pymupdf-text" else "OCR Engine"
-            )
-            table.add_row(name, avail, info["class"], engine_type)
+            table.add_row(name, avail)
 
         console.print(table)
-        console.print("\n[dim]Install document parsers (recommended):[/dim]")
-        console.print("  marker: pip install marker-pdf")
+        console.print("\n[dim]Install:[/dim]")
         console.print("  mineru: pip install mineru")
-        console.print("  docling: pip install docling")
-        console.print("\n[dim]Install OCR engines:[/dim]")
-        console.print("  tesseract: brew install tesseract tesseract-lang && pip install pytesseract")
-        console.print("  easyocr: pip install easyocr")
-        console.print("  paddleocr: pip install paddlepaddle paddleocr")
-        console.print("  surya: pip install surya-ocr")
-        console.print("  trocr: pip install transformers torch")
-        console.print("  pymupdf-text: (included, uses PyMuPDF)")
         return
 
     # List models

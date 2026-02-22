@@ -53,7 +53,7 @@ def _build_prompt(questions: list[Question]) -> str:
     return "\n".join(lines)
 
 
-def add_explanations(parsed_exam: ParsedExam, llm_name: str = "gemini-3-flash-preview") -> ParsedExam:
+def add_explanations(parsed_exam: ParsedExam, llm_name: str = "gemini-3-pro-preview") -> ParsedExam:
     """Generate explanations for exam questions using an LLM and return an updated ParsedExam.
 
     Args:
@@ -91,6 +91,11 @@ def add_explanations(parsed_exam: ParsedExam, llm_name: str = "gemini-3-flash-pr
             contents=prompt,
             config={"temperature": 0.3, "max_output_tokens": 8192},
         )
+
+        if not response.text:
+            logger.warning("Gemini returned empty response for explanations (possibly blocked by safety filters)")
+            return parsed_exam
+
         raw = response.text.strip()
 
         # Strip markdown code fences if present

@@ -96,4 +96,4 @@ class MinerUOCREngine(PDFBasedOCREngine):
 
     @staticmethod
     def is_available() -> bool:
-        return _check_import("magic_pdf")
+        return _check_import("mineru") or _check_import("magic_pdf")
