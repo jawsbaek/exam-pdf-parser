@@ -109,10 +109,30 @@ FastAPI web service for PDF parsing. See `DESIGN.md` for full architecture.
 
 `MinerUOCREngine` (`src/ocr/mineru_ocr.py`) accepts these via constructor or `configure()` method. `HybridOCRClient` auto-applies settings from `get_settings()` at init.
 
+## Known Gotchas
+
+- Always use `llm_name` as the parameter name (not `llm`). `add_explanations()` and `full_flow.py` expect `llm_name`.
+- MinerU v2.x restructured its API — use `mineru.pdf_extract` not legacy imports.
+- When running long processes (MinerU parsing, full pipeline tests), run them in the background rather than blocking interactively.
+
+## Architecture Guardrails
+
+- This project uses a settled 3-layer architecture: **Layer 1** MinerU for OCR/document parsing, **Layer 2** Gemini Pro for LLM structuring, **Layer 3** `validator.py` for validation.
+- **Never** use vision-based direct LLM parsing or alternative OCR engines unless explicitly asked.
+- Do not explore hybrid approaches or parser alternatives — the pipeline is decided.
+
+## Verification
+
+After editing Python files, always verify before considering work complete:
+1. `python -m py_compile <file>` — syntax check
+2. `ruff check src/ --fix` — lint and auto-fix
+3. `python -c 'import <module>'` — import check for modified modules
+
 ## Code style
 
 - Line length: 120 (both black and ruff)
 - Ruff rules: E, F, I, W
 - Python 3.12 (`.python-version`)
+- Use modern Python 3.12+ syntax: `type X = ...` aliases, `match` statements, `X | Y` unions instead of `Union[X, Y]`
 - Bilingual comments (Korean/English) are normal
 - Google-style docstrings
