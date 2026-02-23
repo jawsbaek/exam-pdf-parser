@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .schema import AnswerKey, ParsedExam, QuestionType
+from .schema import AnswerKey, ExamType, ParsedExam, QuestionType
 
 
 class ValidationIssue(BaseModel):
@@ -58,6 +58,23 @@ _PASSAGE_TYPES = {
 _GROUP_RANGE_RE = re.compile(r"^\d+[~～]\d+$")
 
 
+def _detect_exam_type(parsed_exam: ParsedExam) -> ExamType:
+    """Auto-detect exam type from title and content."""
+    title = (parsed_exam.exam_info.title or "").lower()
+
+    if "수능" in title or "대학수학능력" in title:
+        return ExamType.CSAT
+    if "모의" in title or "모의고사" in title or "모의평가" in title:
+        return ExamType.MOCK_EXAM
+
+    # Check for workbook indicators
+    has_written = any(q.question_type in _WRITTEN_TYPES for q in parsed_exam.questions)
+    if has_written or any(kw in title for kw in ("final test", "chapter test", "워크북", "연습")):
+        return ExamType.WORKBOOK
+
+    return ExamType.OTHER
+
+
 def validate_exam(
     parsed_exam: ParsedExam,
     answer_key: AnswerKey | None = None,
@@ -78,11 +95,17 @@ def validate_exam(
     """
     issues: list[ValidationIssue] = []
 
+    exam_type = _detect_exam_type(parsed_exam)
+
     _validate_schema_completeness(parsed_exam, issues, valid_points=valid_points)
     _validate_numbering_continuity(parsed_exam, issues, expected_questions)
     _validate_choices(parsed_exam, issues, listening_max=listening_max)
     _validate_passages(parsed_exam, issues)
-    _validate_listening_questions(parsed_exam, issues, listening_max=listening_max)
+
+    # Only validate listening structure for CSAT/mock exam formats
+    if exam_type in (ExamType.CSAT, ExamType.MOCK_EXAM):
+        _validate_listening_questions(parsed_exam, issues, listening_max=listening_max)
+
     _validate_group_questions(parsed_exam, issues)
     _validate_content_quality(parsed_exam, issues)
 

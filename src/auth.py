@@ -15,8 +15,9 @@ Usage:
 
 import logging
 import os
+import secrets
 
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader, APIKeyQuery
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ async def require_api_key(
             headers={"WWW-Authenticate": "ApiKey"},
         )
 
-    if provided_key not in valid_keys:
+    if not any(secrets.compare_digest(provided_key, vk) for vk in valid_keys):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key.",

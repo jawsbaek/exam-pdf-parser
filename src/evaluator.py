@@ -6,10 +6,10 @@ answer.md 파일을 파싱하고 모델 출력을 평가하는 시스템.
 import re
 from difflib import SequenceMatcher
 from pathlib import Path
+
 from pydantic import BaseModel
 
 from .schema import AnswerEntry, AnswerKey, Choice, ParsedExam
-
 
 # ---------------------------------------------------------------------------
 # Evaluation result models

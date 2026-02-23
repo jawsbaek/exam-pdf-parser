@@ -12,10 +12,13 @@ Endpoints:
 """
 
 import asyncio
+import glob
 import logging
 import os
 import tempfile
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,7 +46,7 @@ MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 _JOB_TTL_SECONDS = 3600  # 1 hour — jobs are cleaned up after this
 
 # ---------------------------------------------------------------------------
-# Job store (in-memory; replace with Redis for multi-process deployments)
+# Job store (in-memory; all state lost on restart. For production, use Redis or SQLite.)
 # ---------------------------------------------------------------------------
 
 JobStatus = Literal["pending", "running", "done", "failed"]
@@ -61,6 +64,9 @@ class JobRecord(BaseModel):
 
 _jobs: dict[str, JobRecord] = {}
 _job_queue: asyncio.Queue = asyncio.Queue()
+
+# Dedicated thread pool for parse jobs (avoids sharing the default executor with other tasks)
+_parse_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="parse")
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +87,7 @@ async def _worker():
         record.status = "running"
         try:
             result = await loop.run_in_executor(
-                None,
+                _parse_executor,
                 _run_parse_sync,
                 pdf_path,
                 model_name,
@@ -139,15 +145,30 @@ async def lifespan(app: FastAPI):
     if not settings.GOOGLE_API_KEY:
         logger.warning("GOOGLE_API_KEY not configured — parsing will fail unless the key is set at runtime")
 
-    worker_task = asyncio.create_task(_worker())
+    # Clean up orphaned temp files from previous crashes
+    tmp_dir = tempfile.gettempdir()
+    for f in glob.glob(os.path.join(tmp_dir, "exam-*.pdf")):
+        try:
+            if time.time() - os.path.getmtime(f) > 3600:
+                os.unlink(f)
+                logger.info("Cleaned up stale temp file: %s", f)
+        except OSError:
+            pass
+
+    worker_count = min(settings.MAX_CONCURRENT_PARSES, 4)
+    worker_tasks = [asyncio.create_task(_worker()) for _ in range(worker_count)]
+    logger.info("Started %d parse workers", worker_count)
     cleanup_task = asyncio.create_task(_cleanup_expired_jobs())
     yield
-    worker_task.cancel()
+    for wt in worker_tasks:
+        wt.cancel()
+    for wt in worker_tasks:
+        try:
+            await wt
+        except asyncio.CancelledError:
+            pass
+    _parse_executor.shutdown(wait=False)
     cleanup_task.cancel()
-    try:
-        await worker_task
-    except asyncio.CancelledError:
-        pass
     try:
         await cleanup_task
     except asyncio.CancelledError:

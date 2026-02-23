@@ -25,6 +25,12 @@ class PDFParser:
         self.dpi = dpi
         self.zoom = dpi / 72  # PDF default is 72 DPI
 
+    @property
+    def page_count(self) -> int:
+        """Get page count without rendering images."""
+        with fitz.open(self.pdf_path) as doc:
+            return len(doc)
+
     def get_page_images_as_bytes(self) -> list[tuple[bytes, str]]:
         """
         Get all pages as PNG bytes with MIME type.

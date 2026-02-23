@@ -4,6 +4,7 @@ LLM 클라이언트 공통 유틸리티.
 """
 
 import logging
+import random
 import time
 from functools import wraps
 
@@ -50,7 +51,7 @@ def retry_llm_call(max_retries=3, base_delay=2.0):
                 except Exception as e:
                     if attempt == max_retries - 1 or not _is_retryable(e):
                         raise
-                    delay = base_delay * (2**attempt)
+                    delay = base_delay * (2**attempt) + random.uniform(0, 1)
                     logger.warning(
                         "LLM call failed (attempt %d/%d): %s. Retrying in %.1fs...",
                         attempt + 1,

@@ -43,10 +43,17 @@ class ExamParser:
             )
 
         start_time = time.time()
-        images = self.pdf_parser.get_page_images_as_bytes()
-        pages_processed = len(images)
 
         client = HybridOCRClient(model_name=model_name, pdf_path=str(self.pdf_path))
+
+        # Skip expensive image conversion for PDF-based engines (e.g., MinerU)
+        if client.ocr_engine.is_pdf_based:
+            images = []
+            pages_processed = self.pdf_parser.page_count
+        else:
+            images = self.pdf_parser.get_page_images_as_bytes()
+            pages_processed = len(images)
+
         parsed_exam = client.parse_exam(images, instruction=instruction)
         parsing_time = time.time() - start_time
 

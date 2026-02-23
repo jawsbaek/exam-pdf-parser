@@ -93,6 +93,11 @@ def get_settings() -> Settings:
     return Settings()
 
 
+def clear_settings_cache() -> None:
+    """Clear the cached settings instance. Useful for testing."""
+    get_settings.cache_clear()
+
+
 def sanitize_model_name(name: str) -> str:
     """Sanitize model name for use in file paths."""
     return name.replace("/", "_").replace(":", "_").replace("+", "-plus-")

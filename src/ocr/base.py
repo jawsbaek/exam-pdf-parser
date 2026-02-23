@@ -87,6 +87,11 @@ class OCREngine(ABC):
             "total_time_seconds": round(self.init_time + self.ocr_time, 2),
         }
 
+    @property
+    def is_pdf_based(self) -> bool:
+        """Whether this engine reads PDF files directly (vs. rendered images)."""
+        return False
+
     @staticmethod
     def is_available() -> bool:
         """Check if this OCR engine's dependencies are installed."""
@@ -103,6 +108,11 @@ class PDFBasedOCREngine(OCREngine):
     def __init__(self, name: str, languages: list[str] | None = None):
         super().__init__(name=name, languages=languages)
         self._pdf_path: Path | None = None
+
+    @property
+    def is_pdf_based(self) -> bool:
+        """PDF-based engines read the PDF directly."""
+        return True
 
     def set_pdf_path(self, pdf_path: str):
         """Set PDF path for direct PDF conversion."""

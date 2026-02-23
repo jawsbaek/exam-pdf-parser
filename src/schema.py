@@ -45,6 +45,15 @@ class QuestionType(str, Enum):
     REWRITE = "문장전환"
 
 
+class ExamType(str, Enum):
+    """Detected exam format type."""
+
+    CSAT = "수능"           # Korean CSAT (수학능력시험)
+    MOCK_EXAM = "모의고사"   # Mock exam (모의평가)
+    WORKBOOK = "워크북"      # Practice workbook / final test
+    OTHER = "기타"          # Unknown / other format
+
+
 class VocabularyNote(BaseModel):
     """어휘 주석 (별표로 표시된 단어와 한글 뜻)"""
 
@@ -88,6 +97,7 @@ class ExamInfo(BaseModel):
     grade: int | None = None
     subject: str = ""
     total_questions: int | None = None
+    exam_type: ExamType | None = None
 
 
 class ParsedExam(BaseModel):

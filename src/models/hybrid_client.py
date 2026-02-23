@@ -7,8 +7,8 @@ from ..config import check_api_key, get_settings
 from ..ocr import get_ocr_engine
 from ..prompt import get_parsing_prompt
 from ..schema import ParsedExam
-from ._utils import retry_llm_call
 from .base import ModelClient
+from .llm_backend import GeminiBackend
 
 
 class HybridOCRClient(ModelClient):
@@ -45,7 +45,7 @@ class HybridOCRClient(ModelClient):
 
         self.ocr_metrics = {}
         self._pdf_path = pdf_path
-        self._client = None
+        self._llm = GeminiBackend(self.llm_name)
 
         if pdf_path and hasattr(self.ocr_engine, "set_pdf_path"):
             self.ocr_engine.set_pdf_path(pdf_path)
@@ -66,7 +66,7 @@ class HybridOCRClient(ModelClient):
 
         prompt = instruction or get_parsing_prompt()
         text_prompt = self._build_text_prompt(prompt, extracted_text)
-        return self._call_gemini(text_prompt)
+        return self._llm.structure_text(text_prompt)
 
     def _build_text_prompt(self, base_prompt: str, extracted_text: str) -> str:
         return f"""{base_prompt}
@@ -78,39 +78,11 @@ class HybridOCRClient(ModelClient):
 {extracted_text}
 """
 
-    @retry_llm_call()
-    def _call_gemini(self, prompt: str) -> ParsedExam:
-        from google import genai
-        from google.genai import types
-
-        if self._client is None:
-            settings = get_settings()
-            self._client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-
-        response = self._client.models.generate_content(
-            model=self.llm_name,
-            contents=[prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=ParsedExam,
-                temperature=0.1,
-                max_output_tokens=65536,
-            ),
-        )
-
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            self._add_tokens(
-                getattr(response.usage_metadata, "prompt_token_count", 0),
-                getattr(response.usage_metadata, "candidates_token_count", 0),
-            )
-
-        if not response.text:
-            raise ValueError(
-                "Gemini returned empty response (possibly blocked by safety filters). "
-                f"Finish reason: {getattr(response.candidates[0], 'finish_reason', 'unknown') if response.candidates else 'no candidates'}"
-            )
-
-        return ParsedExam.model_validate_json(response.text)
+    def get_token_usage(self) -> tuple[int, int]:
+        """Combine OCR parent tokens with LLM backend tokens."""
+        ocr_in, ocr_out = super().get_token_usage()
+        llm_in, llm_out = self._llm.get_token_usage()
+        return (ocr_in + llm_in, ocr_out + llm_out)
 
     def get_ocr_metrics(self) -> dict:
         """Return OCR-specific timing metrics."""
