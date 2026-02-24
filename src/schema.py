@@ -150,34 +150,3 @@ class ParseResult(BaseModel):
     pages_processed: int = 0
     ocr_metrics: OCRMetrics | None = None
     error: str | None = None
-
-
-class QuestionRegion(BaseModel):
-    """문제 하나의 물리적 영역 (페이지 내 좌표)"""
-
-    question_number: int
-    page_idx: int
-    bbox: tuple[float, float, float, float]  # (x0, y0, x1, y1) PDF coordinates
-    text_preview: str = ""
-    spans_page: bool = False
-
-
-class CroppedQuestion(BaseModel):
-    """크롭된 문제 이미지 + 해설"""
-
-    question_number: int
-    image_path: str = ""
-    width: int = 0
-    height: int = 0
-    explanation: str | None = None
-    source_page: int = 0
-    group_range: str | None = None
-
-
-class CroppedExam(BaseModel):
-    """크롭 결과 전체"""
-
-    exam_info: ExamInfo
-    questions: list[CroppedQuestion]
-    total_questions: int = 0
-    crop_metrics: dict = Field(default_factory=dict)
