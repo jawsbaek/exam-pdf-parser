@@ -45,6 +45,7 @@ class MinerUOCREngine(PDFBasedOCREngine):
         self._formula_enable = formula_enable
         self._table_enable = table_enable
         self._make_mode = make_mode
+        self._middle_json: dict | None = None
 
     def configure(
         self,
@@ -65,6 +66,10 @@ class MinerUOCREngine(PDFBasedOCREngine):
             self._table_enable = table_enable
         if make_mode is not None:
             self._make_mode = make_mode
+
+    def get_layout_data(self) -> dict | None:
+        """Return layout analysis result with bbox data from last extraction."""
+        return self._middle_json
 
     def _initialize(self):
         # Try v2 first (mineru package), then fallback to v1 (magic_pdf)
@@ -124,6 +129,7 @@ class MinerUOCREngine(PDFBasedOCREngine):
             middle_json = result_to_middle_json(
                 model_list, images_list, pdf_doc, image_writer, _lang, _ocr_enable, self._formula_enable
             )
+            self._middle_json = middle_json
 
             pdf_info = middle_json["pdf_info"]
             md_content = union_make(pdf_info, make_mode_enum, os.path.basename(image_dir))
