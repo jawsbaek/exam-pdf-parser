@@ -45,6 +45,7 @@ class QuestionRegionDetector:
         into QuestionRegion objects with union bounding boxes.
         """
         regions: list[QuestionRegion] = []
+        prev_page_last_q: int | None = None
 
         for page_info in middle_json.get("pdf_info", []):
             page_idx = page_info.get("page_idx", 0)
@@ -55,9 +56,17 @@ class QuestionRegionDetector:
 
             # Split into columns and process each independently
             columns = self._split_into_columns(blocks, page_width)
-            for col_blocks in columns:
-                col_regions = self._detect_in_column(col_blocks, page_idx)
-                regions.extend(col_regions)
+            page_regions: list[QuestionRegion] = []
+            for i, col_blocks in enumerate(columns):
+                # Only first column carries over from previous page's last question
+                carry = prev_page_last_q if i == 0 else None
+                col_regions = self._detect_in_column(col_blocks, page_idx, carry_over_q_num=carry)
+                page_regions.extend(col_regions)
+            regions.extend(page_regions)
+
+            # Track last question on this page for cross-page carry-over
+            if page_regions:
+                prev_page_last_q = max(r.question_number for r in page_regions)
 
         # Post-processing: fix OCR digit-split errors and cross-page questions
         regions = self._fix_sequential_order(regions)
@@ -106,20 +115,30 @@ class QuestionRegionDetector:
             result.append(right)
         return result if result else [[]]
 
-    def _detect_in_column(self, blocks: list[dict], page_idx: int) -> list[QuestionRegion]:
+    def _detect_in_column(
+        self, blocks: list[dict], page_idx: int, carry_over_q_num: int | None = None,
+    ) -> list[QuestionRegion]:
         """Detect question regions within a single column of blocks.
 
-        Blocks before the first detected question (e.g., shared passage for
-        group questions like [41~42]) are assigned to the first question in
-        the column to ensure the passage is included in the crop.
+        Args:
+            blocks: Blocks in this column, sorted by y-coordinate
+            page_idx: Page index
+            carry_over_q_num: Last question number from previous page's column.
+                Used to assign cross-page continuation blocks to the correct question.
+
+        Blocks before the first detected question are handled based on context:
+        - If a section header was seen (e.g., [41~42]): group passage → assign to first question
+        - If carry_over_q_num is set (no section header): cross-page continuation → assign to carry-over
+        - Otherwise: assign to first question as generous crop
         """
         regions: list[QuestionRegion] = []
 
         current_q_num: int | None = None
         current_bboxes: list[list[float]] = []
         current_text = ""
-        # Track blocks before first question (shared passage for group questions)
+        # Track blocks before first question
         pre_question_bboxes: list[list[float]] = []
+        saw_section_header = False
 
         for block in blocks:
             if "bbox" not in block:
@@ -135,6 +154,7 @@ class QuestionRegionDetector:
 
             # Skip section headers like [31~34]
             if self._is_section_header(text):
+                saw_section_header = True
                 continue
 
             q_num, _group_range = self._detect_question_start(text)
@@ -148,10 +168,22 @@ class QuestionRegionDetector:
                         bbox=self._union_bbox(current_bboxes),
                         text_preview=current_text[:80],
                     ))
-                # Start new question — include pre-question blocks for first question
+                # Handle pre-question blocks
                 current_q_num = q_num
                 if pre_question_bboxes:
-                    current_bboxes = pre_question_bboxes + [block["bbox"]]
+                    if not saw_section_header and carry_over_q_num is not None:
+                        # Cross-page continuation — assign to previous page's question
+                        regions.append(QuestionRegion(
+                            question_number=carry_over_q_num,
+                            page_idx=page_idx,
+                            bbox=self._union_bbox(pre_question_bboxes),
+                            text_preview="(continuation from previous page)",
+                            spans_page=True,
+                        ))
+                        current_bboxes = [block["bbox"]]
+                    else:
+                        # Group passage or first-question context — assign to this question
+                        current_bboxes = pre_question_bboxes + [block["bbox"]]
                     pre_question_bboxes = []
                 else:
                     current_bboxes = [block["bbox"]]
@@ -160,7 +192,7 @@ class QuestionRegionDetector:
                 current_bboxes.append(block["bbox"])
                 current_text += " " + text
             else:
-                # Blocks before any question — shared passage for group questions
+                # Blocks before any question
                 pre_question_bboxes.append(block["bbox"])
 
         # Save last question in column
