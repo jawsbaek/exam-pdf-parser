@@ -173,8 +173,6 @@ class CroppedQuestion(BaseModel):
     source_page: int = 0
     group_range: str | None = None
 
-    model_config = {"json_encoders": {bytes: lambda v: None}}
-
 
 class CroppedExam(BaseModel):
     """크롭 결과 전체"""
