@@ -60,8 +60,7 @@ def crop_and_explain(
         )
 
     ocr_engine.set_pdf_path(pdf_path)
-    ocr_engine._ensure_initialized()
-    _markdown = ocr_engine._convert_pdf(pdf_path)
+    ocr_engine.extract_from_pdf(pdf_path)
 
     middle_json = ocr_engine.get_layout_data()
     if middle_json is None:

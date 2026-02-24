@@ -5,6 +5,7 @@ MinerU middle_json에서 문제 영역을 감지합니다.
 
 import logging
 import re
+from collections import Counter
 
 from ..schema import QuestionRegion
 
@@ -13,12 +14,11 @@ logger = logging.getLogger(__name__)
 # Korean exam question number patterns (ordered by specificity)
 # Key insight: Korean exams often have "N.다음" (no space after dot)
 _Q_NUM_PATTERNS = [
-    re.compile(r'^\[(\d{1,2})~(\d{1,2})\]'),    # [41~42] group questions
-    re.compile(r'^\[(\d{1,2})\s*~\s*(\d{1,2})\]'),  # [41 ~ 42] with spaces
-    re.compile(r'^【(\d{1,2})】'),                 # 【18】 format
-    re.compile(r'^\[(\d{1,2})\]'),                # [18] format
-    re.compile(r'^(\d{1,2})\.'),                  # "18." or "18.다음" (no space needed)
-    re.compile(r'^(\d{1,2})\s'),                  # "18 " format (last resort)
+    re.compile(r'^\[(\d{1,2})\s*[~∼]\s*(\d{1,2})\]'),  # [41~42] or [41 ~ 42] group questions
+    re.compile(r'^【(\d{1,2})】'),                        # 【18】 format
+    re.compile(r'^\[(\d{1,2})\]'),                       # [18] format
+    re.compile(r'^(\d{1,2})\.'),                         # "18." or "18.다음" (no space needed)
+    re.compile(r'^(\d{1,2})\s'),                         # "18 " format (last resort)
 ]
 
 # Section header patterns to skip (not actual questions)
@@ -63,8 +63,6 @@ class QuestionRegionDetector:
 
                 # Skip section headers like [31~34]
                 if self._is_section_header(text):
-                    if current_q_num is not None:
-                        current_bboxes.append(block["bbox"])
                     continue
 
                 q_num, group_range = self._detect_question_start(text)
@@ -114,19 +112,18 @@ class QuestionRegionDetector:
         return " ".join(texts).strip()
 
     def _is_section_header(self, text: str) -> bool:
-        """Check if text is a section header like [31~34] (not an actual question)."""
+        """Check if text is a section header like [31~34] (not an actual question).
+
+        Section headers are short standalone text with a range bracket and a brief descriptor.
+        Group questions like [41~42] have substantial body text after the bracket.
+        """
         text = text.strip()
-        # Match patterns like "[ 3 1 ~ 3 4 ]" or "[31~34]" that are section dividers
-        # These contain LaTeX-style spacing from MinerU: "[ 3 1 \sim 3 4 ]"
         if re.match(r'^\[\s*\d', text) and ('\\sim' in text or '~' in text or '∼' in text):
-            # But NOT if it also contains question text after the bracket
             bracket_end = text.find(']')
             if bracket_end != -1:
                 after = text[bracket_end + 1:].strip()
-                # Section headers have descriptive text like "다음 빈칸에..."
-                # Actual group questions like [41~42] also have descriptive text
-                # Distinguish by checking if the content after ] starts with a question keyword
-                if not after or after.startswith('다음') or after.startswith('주어진') or after.startswith('글의'):
+                # Section headers are short; group questions have substantial text
+                if not after or len(after) < 30:
                     return True
         return False
 
@@ -158,7 +155,6 @@ class QuestionRegionDetector:
             return regions
 
         # Step 1: Find duplicate question numbers
-        from collections import Counter
         num_counts = Counter(r.question_number for r in regions)
         duplicates = {n for n, c in num_counts.items() if c > 1}
 

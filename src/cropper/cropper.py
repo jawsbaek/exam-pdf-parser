@@ -32,20 +32,19 @@ class QuestionCropper:
     def crop_regions(
         self,
         regions: list[QuestionRegion],
-        output_dir: str | None = None,
+        output_dir: str = "output/cropped",
     ) -> list[CroppedQuestion]:
         """
         Crop all question regions to individual PNG images.
 
         Args:
             regions: Detected question regions with bbox coordinates
-            output_dir: Optional directory to save PNG files. If None, only in-memory bytes.
+            output_dir: Directory to save PNG files
 
         Returns:
-            List of CroppedQuestion with image data
+            List of CroppedQuestion with image paths
         """
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
         results: list[CroppedQuestion] = []
         mat = fitz.Matrix(self.zoom, self.zoom)
@@ -74,12 +73,11 @@ class QuestionCropper:
                 pix = page.get_pixmap(matrix=mat, clip=rect)
                 img_bytes = pix.tobytes("png")
 
-                # Save to file if output_dir provided
-                img_path = ""
-                if output_dir:
-                    img_path = os.path.join(output_dir, f"q{region.question_number:02d}.png")
-                    Path(img_path).write_bytes(img_bytes)
-                    logger.debug("Saved question %d crop to %s", region.question_number, img_path)
+                # Save to file — use page suffix for cross-page questions
+                suffix = f"_p{region.page_idx}" if region.spans_page else ""
+                img_path = os.path.join(output_dir, f"q{region.question_number:02d}{suffix}.png")
+                Path(img_path).write_bytes(img_bytes)
+                logger.debug("Saved question %d crop to %s", region.question_number, img_path)
 
                 results.append(CroppedQuestion(
                     question_number=region.question_number,
