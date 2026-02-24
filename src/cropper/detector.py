@@ -1,6 +1,10 @@
 """
 Question region detection from MinerU layout data.
 MinerU middle_json에서 문제 영역을 감지합니다.
+
+Column-aware processing: Korean exams use 2-column layout.
+MinerU returns blocks in reading order that interleaves columns,
+so we split blocks into columns and process each independently.
 """
 
 import logging
@@ -21,14 +25,12 @@ _Q_NUM_PATTERNS = [
     re.compile(r'^(\d{1,2})\s'),                         # "18 " format (last resort)
 ]
 
-# Section header patterns to skip (not actual questions)
-_SECTION_HEADER_RE = re.compile(
-    r'^\[\s*\d{1,2}\s*[~∼]\s*\d{1,2}\s*\]'  # [31~34], [36~37] section headers
-)
-
 
 class QuestionRegionDetector:
-    """Detect question regions from MinerU middle_json layout data."""
+    """Detect question regions from MinerU middle_json layout data.
+
+    Uses column-aware processing to correctly handle 2-column exam layouts.
+    """
 
     def __init__(self, min_question: int = 1, max_question: int = 50):
         self._min_q = min_question
@@ -38,7 +40,8 @@ class QuestionRegionDetector:
         """
         Analyze para_blocks per page to detect question boundaries.
 
-        Groups consecutive blocks between question number patterns
+        Splits blocks into columns, processes each independently, then
+        groups consecutive blocks between question number patterns
         into QuestionRegion objects with union bounding boxes.
         """
         regions: list[QuestionRegion] = []
@@ -47,58 +50,128 @@ class QuestionRegionDetector:
             page_idx = page_info.get("page_idx", 0)
             blocks = page_info.get("para_blocks") or page_info.get("preproc_blocks", [])
 
-            current_q_num = None
-            current_bboxes: list[list[float]] = []
-            current_text = ""
+            page_size = page_info.get("page_size", [842, 1191])
+            page_width = page_size[0] if isinstance(page_size, list) else 842
 
-            for block in blocks:
-                if "bbox" not in block:
-                    continue
+            # Split into columns and process each independently
+            columns = self._split_into_columns(blocks, page_width)
+            for col_blocks in columns:
+                col_regions = self._detect_in_column(col_blocks, page_idx)
+                regions.extend(col_regions)
 
-                text = self._extract_block_text(block)
-                if not text.strip():
-                    if current_q_num is not None:
-                        current_bboxes.append(block["bbox"])
-                    continue
-
-                # Skip section headers like [31~34]
-                if self._is_section_header(text):
-                    continue
-
-                q_num, group_range = self._detect_question_start(text)
-
-                if q_num is not None and q_num != current_q_num:
-                    # Save previous question
-                    if current_q_num is not None:
-                        regions.append(QuestionRegion(
-                            question_number=current_q_num,
-                            page_idx=page_idx,
-                            bbox=self._union_bbox(current_bboxes),
-                            text_preview=current_text[:80],
-                        ))
-                    # Start new question
-                    current_q_num = q_num
-                    current_bboxes = [block["bbox"]]
-                    current_text = text
-                elif current_q_num is not None:
-                    current_bboxes.append(block["bbox"])
-                    current_text += " " + text
-
-            # Save last question on page
-            if current_q_num is not None:
-                regions.append(QuestionRegion(
-                    question_number=current_q_num,
-                    page_idx=page_idx,
-                    bbox=self._union_bbox(current_bboxes),
-                    text_preview=current_text[:80],
-                ))
-
-        # Post-processing: fix sequential order and fill gaps
+        # Post-processing: fix OCR digit-split errors and cross-page questions
         regions = self._fix_sequential_order(regions)
         regions = self._merge_cross_page(regions)
         regions.sort(key=lambda r: r.question_number)
 
         logger.info("Detected %d question regions", len(regions))
+        return regions
+
+    def _split_into_columns(self, blocks: list[dict], page_width: float) -> list[list[dict]]:
+        """Split page blocks into separate columns for independent processing.
+
+        Korean exam pages use 2-column layout. MinerU returns blocks in a
+        reading order that interleaves columns, causing sequential grouping
+        to assign blocks from one column to questions in the other.
+
+        Splitting prevents union bboxes from incorrectly spanning both columns
+        and ensures each question gets only its own column's blocks.
+        """
+        if not blocks:
+            return []
+
+        mid_x = page_width / 2
+        left: list[dict] = []
+        right: list[dict] = []
+
+        for block in blocks:
+            if "bbox" not in block:
+                continue
+            x0, _, x1, _ = block["bbox"]
+            center_x = (x0 + x1) / 2
+
+            if center_x <= mid_x:
+                left.append(block)
+            else:
+                right.append(block)
+
+        # Sort each column by y-coordinate for proper sequential processing
+        left.sort(key=lambda b: b["bbox"][1])
+        right.sort(key=lambda b: b["bbox"][1])
+
+        result = []
+        if left:
+            result.append(left)
+        if right:
+            result.append(right)
+        return result if result else [[]]
+
+    def _detect_in_column(self, blocks: list[dict], page_idx: int) -> list[QuestionRegion]:
+        """Detect question regions within a single column of blocks.
+
+        Blocks before the first detected question (e.g., shared passage for
+        group questions like [41~42]) are assigned to the first question in
+        the column to ensure the passage is included in the crop.
+        """
+        regions: list[QuestionRegion] = []
+
+        current_q_num: int | None = None
+        current_bboxes: list[list[float]] = []
+        current_text = ""
+        # Track blocks before first question (shared passage for group questions)
+        pre_question_bboxes: list[list[float]] = []
+
+        for block in blocks:
+            if "bbox" not in block:
+                continue
+
+            text = self._extract_block_text(block)
+            if not text.strip():
+                if current_q_num is not None:
+                    current_bboxes.append(block["bbox"])
+                else:
+                    pre_question_bboxes.append(block["bbox"])
+                continue
+
+            # Skip section headers like [31~34]
+            if self._is_section_header(text):
+                continue
+
+            q_num, _group_range = self._detect_question_start(text)
+
+            if q_num is not None and q_num != current_q_num:
+                # Save previous question
+                if current_q_num is not None:
+                    regions.append(QuestionRegion(
+                        question_number=current_q_num,
+                        page_idx=page_idx,
+                        bbox=self._union_bbox(current_bboxes),
+                        text_preview=current_text[:80],
+                    ))
+                # Start new question — include pre-question blocks for first question
+                current_q_num = q_num
+                if pre_question_bboxes:
+                    current_bboxes = pre_question_bboxes + [block["bbox"]]
+                    pre_question_bboxes = []
+                else:
+                    current_bboxes = [block["bbox"]]
+                current_text = text
+            elif current_q_num is not None:
+                current_bboxes.append(block["bbox"])
+                current_text += " " + text
+            else:
+                # Blocks before any question — shared passage for group questions
+                pre_question_bboxes.append(block["bbox"])
+
+        # Save last question in column
+        if current_q_num is not None:
+            regions.append(QuestionRegion(
+                question_number=current_q_num,
+                page_idx=page_idx,
+                bbox=self._union_bbox(current_bboxes),
+                text_preview=current_text[:80],
+            ))
+
         return regions
 
     def _extract_block_text(self, block: dict) -> str:
